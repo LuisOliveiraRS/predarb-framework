@@ -12,6 +12,10 @@ from app.events.event_bus import event_bus
 from app.repositories.market_repository import (
     market_repository,
 )
+from app.core.settings import settings
+from app.paper.shadow_execution_runtime import (
+    shadow_execution_runtime,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -136,6 +140,95 @@ def market_update_task() -> dict[str, Any]:
         logger.exception(
             "Falha durante a sincronização "
             "de mercados."
+        )
+
+        raise
+
+
+async def shadow_runtime_cycle_async(
+) -> dict[str, Any]:
+    """
+    Executa um ?nico ciclo Shadow configurado.
+
+    A fun??o permanece fail-closed:
+    - n?o confirma matches;
+    - n?o altera a conta Paper;
+    - n?o envia ordens;
+    - n?o habilita persist?ncia automaticamente.
+    """
+
+    if not settings.SHADOW_RUNTIME_ENABLED:
+        status = shadow_execution_runtime.status()
+
+        return {
+            "status": "DISABLED",
+            "phase": "9F",
+            "scheduler_connected": (
+                status["scheduler_connected"]
+            ),
+            "persistence_requested": False,
+            "paper_account_mutation": False,
+            "market_data_only": True,
+            "read_only_market_access": True,
+            "shadow_execution": True,
+            "simulation_only": True,
+            "paper_execution_authorized": False,
+            "live_authorization": False,
+            "execution_authorized": False,
+            "live_execution": False,
+            "financial_execution": False,
+            "next_step_authorized": False,
+            "automatic_execution_authorized": False,
+            "order_submission_available": False,
+        }
+
+    return await shadow_execution_runtime.run_cycle(
+        force_refresh=(
+            settings.SHADOW_RUNTIME_FORCE_REFRESH
+        ),
+        persist=(
+            settings.SHADOW_RUNTIME_PERSIST_AUDIT
+        ),
+        max_opportunities=(
+            settings
+            .SHADOW_RUNTIME_MAX_OPPORTUNITIES_PER_CYCLE
+        ),
+    )
+
+
+def shadow_runtime_task() -> dict[str, Any]:
+    """
+    Adaptador s?ncrono do APScheduler para a Fase 9F.
+
+    O BackgroundScheduler executa este job em
+    thread pr?pria; asyncio.run() cria um event
+    loop exclusivo para o ciclo Shadow.
+    """
+
+    logger.info(
+        "Iniciando ciclo do Shadow Runtime."
+    )
+
+    try:
+        result = asyncio.run(
+            shadow_runtime_cycle_async()
+        )
+
+        logger.info(
+            "Ciclo Shadow conclu?do: status=%s; "
+            "simulated=%s; rejected=%s; errors=%s.",
+            result.get("status"),
+            result.get("simulated", 0),
+            result.get("rejected", 0),
+            result.get("errors_count", 0),
+        )
+
+        return result
+
+    except Exception:
+        logger.exception(
+            "Falha durante o ciclo do "
+            "Shadow Runtime."
         )
 
         raise

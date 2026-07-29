@@ -60,6 +60,7 @@ from app.api.routers.polymarket_read_only import router as polymarket_read_only_
 from app.api.routers.market_matching import router as market_matching_router
 from app.api.routers.economic_opportunities import router as economic_opportunities_router
 from app.api.routers.shadow_execution import router as shadow_execution_router
+from app.api.routers.shadow_execution_runtime import router as shadow_execution_runtime_router
 from app.api.routers.paper_certification_evidence_incident_runtime_dashboard import router as paper_certification_evidence_incident_runtime_dashboard_router
 from app.api.routers.paper_certification_evidence_incident_dashboard import router as paper_certification_evidence_incident_dashboard_router
 from app.api.routers.paper_readiness_runtime_dashboard import router as paper_readiness_runtime_dashboard_router
@@ -87,8 +88,15 @@ from app.plugins.manager import plugin_manager
 from app.paper.paper_runtime import paper_account_runtime
 from app.paper.paper_session_runtime import paper_session_runtime
 from app.realtime.ws_router import router as websocket_router
+from app.paper.shadow_execution_runtime import (
+    shadow_execution_runtime,
+)
 from app.scheduler.scheduler import scheduler_service
-from app.scheduler.tasks import market_update_task, update_markets_async
+from app.scheduler.tasks import (
+    market_update_task,
+    shadow_runtime_task,
+    update_markets_async,
+)
 from app.services.market_listener import market_listener
 from app.strategies.strategy_manager import strategy_manager
 
@@ -146,6 +154,7 @@ async def lifespan(app: FastAPI):
         "connectors": False,
         "market_listener": False,
         "scheduler": False,
+        "shadow_runtime_scheduler": False,
         "execution_worker": False,
         "router_dashboard": False,
         "paper_account": False,
@@ -194,6 +203,13 @@ async def lifespan(app: FastAPI):
             initial_markets = await update_markets_async()
             app.state.initial_market_count = len(initial_markets)
 
+        shadow_execution_runtime.set_scheduler_connected(
+            False
+        )
+        app.state.lifecycle[
+            "shadow_runtime_scheduler"
+        ] = False
+
         if settings.SCHEDULER_ENABLED:
             scheduler_service.add_job(
                 market_update_task,
@@ -201,6 +217,29 @@ async def lifespan(app: FastAPI):
                 job_id="market_update_task",
                 replace_existing=True,
             )
+
+            if (
+                settings.SHADOW_RUNTIME_ENABLED
+                and settings.SHADOW_RUNTIME_SCHEDULER_ENABLED
+            ):
+                scheduler_service.add_job(
+                    shadow_runtime_task,
+                    seconds=(
+                        settings
+                        .SHADOW_RUNTIME_INTERVAL_SECONDS
+                    ),
+                    job_id="shadow_runtime_task",
+                    replace_existing=True,
+                )
+
+                shadow_execution_runtime.set_scheduler_connected(
+                    True
+                )
+
+                app.state.lifecycle[
+                    "shadow_runtime_scheduler"
+                ] = True
+
             scheduler_service.start()
             app.state.lifecycle["scheduler"] = True
 
@@ -224,6 +263,13 @@ async def lifespan(app: FastAPI):
     finally:
         app.state.startup_completed = False
         logger.info("Finalizando PredArb Framework.")
+
+        shadow_execution_runtime.set_scheduler_connected(
+            False
+        )
+        app.state.lifecycle[
+            "shadow_runtime_scheduler"
+        ] = False
 
         cleanup_steps = (
             (router_service, "stop", "Router Dashboard IA"),
@@ -403,6 +449,7 @@ def create_app() -> FastAPI:
         market_matching_router,
         economic_opportunities_router,
         shadow_execution_router,
+        shadow_execution_runtime_router,
         paper_final_assurance_history_runtime_dashboard_router,
         paper_final_validation_evidence_incident_runtime_dashboard_router,
         paper_final_validation_evidence_incidents_dashboard_router,

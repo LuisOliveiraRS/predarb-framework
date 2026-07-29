@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     EXECUTION_WORKER_ENABLED: bool = True
     ROUTER_DASHBOARD_ENABLED: bool = True
 
+    # Fase 9F ? Shadow Runtime operacional
+    SHADOW_RUNTIME_ENABLED: bool = True
+    SHADOW_RUNTIME_SCHEDULER_ENABLED: bool = False
+    SHADOW_RUNTIME_INTERVAL_SECONDS: int = 60
+    SHADOW_RUNTIME_MAX_OPPORTUNITIES_PER_CYCLE: int = 10
+    SHADOW_RUNTIME_FORCE_REFRESH: bool = False
+    SHADOW_RUNTIME_PERSIST_AUDIT: bool = False
+
     # Hyperliquid
     HYPERLIQUID_API_URL: str = "https://api.hyperliquid.xyz"
     HYPERLIQUID_TIMEOUT_SECONDS: float = 10.0
@@ -159,6 +167,45 @@ class Settings(BaseSettings):
             )
         if self.MARKET_UPDATE_INTERVAL_SECONDS <= 0:
             raise ValueError("MARKET_UPDATE_INTERVAL_SECONDS deve ser positivo.")
+
+        if self.SHADOW_RUNTIME_INTERVAL_SECONDS < 10:
+            raise ValueError(
+                "SHADOW_RUNTIME_INTERVAL_SECONDS deve ser "
+                "pelo menos 10 segundos."
+            )
+
+        if (
+            self.SHADOW_RUNTIME_MAX_OPPORTUNITIES_PER_CYCLE
+            <= 0
+        ):
+            raise ValueError(
+                "SHADOW_RUNTIME_MAX_OPPORTUNITIES_PER_CYCLE "
+                "deve ser positivo."
+            )
+
+        if (
+            self.SHADOW_RUNTIME_SCHEDULER_ENABLED
+            and not self.SHADOW_RUNTIME_ENABLED
+        ):
+            raise ValueError(
+                "SHADOW_RUNTIME_ENABLED deve permanecer ativo "
+                "quando o scheduler Shadow estiver habilitado."
+            )
+
+        if (
+            self.SHADOW_RUNTIME_SCHEDULER_ENABLED
+            and not self.SCHEDULER_ENABLED
+        ):
+            raise ValueError(
+                "SCHEDULER_ENABLED deve permanecer ativo "
+                "quando o scheduler Shadow estiver habilitado."
+            )
+
+        if self.SHADOW_RUNTIME_PERSIST_AUDIT:
+            raise ValueError(
+                "SHADOW_RUNTIME_PERSIST_AUDIT deve permanecer "
+                "desabilitado; persistencia exige acao explicita."
+            )
         if self.HYPERLIQUID_TIMEOUT_SECONDS <= 0:
             raise ValueError("HYPERLIQUID_TIMEOUT_SECONDS deve ser positivo.")
         if self.HYPERLIQUID_MAX_RETRIES < 0:
