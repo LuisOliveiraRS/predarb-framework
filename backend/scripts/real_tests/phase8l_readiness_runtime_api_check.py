@@ -1,0 +1,342 @@
+from __future__ import annotations
+
+import argparse
+import time
+
+import httpx
+
+
+def ensure_safe(
+    payload,
+):
+    assert (
+        payload["execution_authorized"]
+        is False
+    )
+    assert (
+        payload["live_execution"]
+        is False
+    )
+    assert (
+        payload["financial_execution"]
+        is False
+    )
+
+
+def wait_for_cycle(
+    client: httpx.Client,
+    *,
+    initial_cycles: int,
+    timeout_seconds: float = 8.0,
+):
+    deadline = (
+        time.monotonic()
+        + timeout_seconds
+    )
+
+    latest = None
+
+    while time.monotonic() < deadline:
+        response = client.get(
+            "/paper/readiness/runtime/status"
+        )
+        response.raise_for_status()
+
+        latest = response.json()
+        ensure_safe(latest)
+
+        if int(
+            latest.get(
+                "total_cycles",
+                0,
+            )
+        ) > initial_cycles:
+            return latest
+
+        time.sleep(0.25)
+
+    raise AssertionError(
+        "O ciclo imediato não foi "
+        "concluído no tempo esperado."
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:8000",
+    )
+
+    args = parser.parse_args()
+
+    passed = 0
+    failed = 0
+
+    with httpx.Client(
+        base_url=args.base_url.rstrip("/"),
+        timeout=30,
+    ) as client:
+        try:
+            response = client.get(
+                "/paper/readiness/runtime/health"
+            )
+            response.raise_for_status()
+
+            payload = response.json()
+
+            assert (
+                payload["execution_authorized"]
+                is False
+            )
+            assert (
+                payload["live_execution"]
+                is False
+            )
+            assert (
+                payload["financial_execution"]
+                is False
+            )
+            assert (
+                payload["manual_start_required"]
+                is True
+            )
+
+            print(
+                "[PASS] Saúde do runtime"
+            )
+            passed += 1
+
+        except Exception as exc:
+            print(
+                "[FAIL] Saúde do runtime:",
+                exc,
+            )
+            failed += 1
+
+        try:
+            response = client.post(
+                "/paper/readiness/runtime/cycle",
+                params={
+                    "confirm":
+                        "CAPTURE-PAPER-READINESS",
+                },
+            )
+            response.raise_for_status()
+
+            payload = response.json()
+            ensure_safe(payload)
+
+            print(
+                "[PASS] Ciclo manual"
+            )
+            print(
+                "       Status:",
+                payload.get(
+                    "readiness_status"
+                ),
+            )
+            print(
+                "       Score:",
+                payload.get(
+                    "readiness_score"
+                ),
+            )
+            passed += 1
+
+        except Exception as exc:
+            print(
+                "[FAIL] Ciclo manual:",
+                exc,
+            )
+            failed += 1
+
+        initial_cycles = 0
+
+        try:
+            response = client.get(
+                "/paper/readiness/runtime/status"
+            )
+            response.raise_for_status()
+
+            payload = response.json()
+            ensure_safe(payload)
+
+            initial_cycles = int(
+                payload.get(
+                    "total_cycles",
+                    0,
+                )
+            )
+
+            print(
+                "[PASS] Estado inicial"
+            )
+            passed += 1
+
+        except Exception as exc:
+            print(
+                "[FAIL] Estado inicial:",
+                exc,
+            )
+            failed += 1
+
+        try:
+            client.post(
+                "/paper/readiness/runtime/stop",
+                params={
+                    "confirm":
+                        "STOP-PAPER-READINESS-RUNTIME",
+                },
+            )
+
+            response = client.post(
+                "/paper/readiness/runtime/start",
+                params={
+                    "confirm":
+                        "START-PAPER-READINESS-RUNTIME",
+                    "interval_seconds": 30,
+                    "run_immediately": "true",
+                },
+            )
+
+            response.raise_for_status()
+            payload = response.json()
+            ensure_safe(payload)
+
+            assert payload[
+                "running"
+            ] is True
+
+            print(
+                "[PASS] Runtime iniciado"
+            )
+            passed += 1
+
+        except Exception as exc:
+            print(
+                "[FAIL] Início do runtime:",
+                exc,
+            )
+            failed += 1
+
+        try:
+            payload = wait_for_cycle(
+                client,
+                initial_cycles=(
+                    initial_cycles
+                ),
+            )
+
+            print(
+                "[PASS] Captura imediata"
+            )
+            print(
+                "       Ciclos:",
+                payload.get(
+                    "total_cycles"
+                ),
+            )
+            print(
+                "       READY:",
+                payload.get(
+                    "ready_cycles"
+                ),
+            )
+            print(
+                "       NOT_READY:",
+                payload.get(
+                    "not_ready_cycles"
+                ),
+            )
+            print(
+                "       INSUFFICIENT_DATA:",
+                payload.get(
+                    "insufficient_data_cycles"
+                ),
+            )
+            passed += 1
+
+        except Exception as exc:
+            print(
+                "[FAIL] Captura imediata:",
+                exc,
+            )
+            failed += 1
+
+        try:
+            response = client.post(
+                "/paper/readiness/runtime/stop",
+                params={
+                    "confirm":
+                        "STOP-PAPER-READINESS-RUNTIME",
+                },
+            )
+            response.raise_for_status()
+
+            payload = response.json()
+            ensure_safe(payload)
+
+            assert payload[
+                "running"
+            ] is False
+
+            print(
+                "[PASS] Runtime encerrado"
+            )
+            passed += 1
+
+        except Exception as exc:
+            print(
+                "[FAIL] Encerramento:",
+                exc,
+            )
+            failed += 1
+
+        try:
+            response = client.get(
+                "/paper/readiness/runtime/last-cycle"
+            )
+            response.raise_for_status()
+
+            payload = response.json()
+            ensure_safe(payload)
+
+            assert payload[
+                "last_cycle_at"
+            ]
+
+            print(
+                "[PASS] Último ciclo disponível"
+            )
+            passed += 1
+
+        except Exception as exc:
+            print(
+                "[FAIL] Último ciclo:",
+                exc,
+            )
+            failed += 1
+
+    print()
+    print(
+        "Aprovados:",
+        passed,
+    )
+    print(
+        "Falhas:",
+        failed,
+    )
+
+    return (
+        0
+        if failed == 0
+        else 1
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(
+        main()
+    )

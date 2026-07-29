@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h2>PredArb WebSocket Test</h2>
+
+<div id="status">Desconectado</div>
+
+<script>
+
+const ws = new WebSocket("ws://127.0.0.1:8000/ws/live");
+
+ws.onopen = () => {
+    document.getElementById("status").innerHTML = "Conectado";
+};
+
+ws.onmessage = (e) => {
+    console.log(e.data);
+};
+
+ws.onclose = () => {
+    document.getElementById("status").innerHTML = "Desconectado";
+};
+
+</script>
+
+</body>
+</html>

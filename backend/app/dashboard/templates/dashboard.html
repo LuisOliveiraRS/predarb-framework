@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="robots" content="noindex,nofollow">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar" aria-label="Navegação principal">
+        <a class="brand" href="/dashboard" aria-label="PredArb Dashboard">
+            <span class="brand-mark">P</span>
+            <span>
+                <strong>PredArb</strong>
+                <small>Enterprise</small>
+            </span>
+        </a>
+
+        <nav class="nav-list">
+            <a class="nav-link active" href="#overview">Visão geral</a>
+            <a class="nav-link" href="#markets-panel">Mercados</a>
+            <a class="nav-link" href="#orders-panel">Ordens</a>
+            <a class="nav-link" href="#positions-panel">Posições</a>
+            <a class="nav-link" href="#paper-panel">Conta Paper</a>
+            <a class="nav-link" href="#router-panel">AI Router</a>
+            <a class="nav-link" href="#events-panel">Eventos</a>
+            <a class="nav-link" href="/docs" target="_blank" rel="noopener">API Docs</a>
+        </nav>
+
+        <div class="sidebar-foot">
+            <span class="security-dot"></span>
+            <div>
+                <strong>Execução protegida</strong>
+                <small>Live exige habilitação explícita</small>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">Central operacional</p>
+                <h1>{{ title }}</h1>
+                <p class="subtitle">Monitoramento do Kernel, OMS, Trading e roteamento adaptativo.</p>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="sync-info">
+                    <span>Última atualização</span>
+                    <strong id="last-updated">Aguardando dados</strong>
+                </div>
+                <span id="system-status" class="status-badge status-loading">INICIANDO</span>
+                <button id="refresh-button" class="button" type="button">Atualizar</button>
+            </div>
+        </header>
+
+        <div id="global-alert" class="global-alert" role="status" hidden></div>
+
+        <section id="overview" aria-labelledby="overview-title">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Snapshot</p>
+                    <h2 id="overview-title">Visão geral</h2>
+                </div>
+                <span id="connection-status" class="connection-label">WebSocket desconectado</span>
+            </div>
+            <div id="metric-cards" class="metric-grid" aria-live="polite"></div>
+        </section>
+
+        <section class="overview-grid">
+            <article class="panel portfolio-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Capital</p>
+                        <h2>Portfólio</h2>
+                    </div>
+                </div>
+                <dl id="portfolio-summary" class="summary-list"></dl>
+            </article>
+
+            <article class="panel router-summary-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Roteamento</p>
+                        <h2>AI Router</h2>
+                    </div>
+                    <span id="router-status" class="mini-badge">SEM DADOS</span>
+                </div>
+                <div class="confidence-block">
+                    <div class="confidence-copy">
+                        <span>Confiança média</span>
+                        <strong id="router-confidence">0%</strong>
+                    </div>
+                    <div class="progress" aria-hidden="true">
+                        <span id="router-confidence-bar"></span>
+                    </div>
+                </div>
+                <div id="router-kpis" class="kpi-row"></div>
+            </article>
+        </section>
+
+
+        <section id="paper-panel" class="panel paper-panel">
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">Simulação persistente</p>
+                    <h2>Conta Paper</h2>
+                </div>
+                <div class="paper-status-group">
+                    <span id="paper-persistence" class="count-label">Não persistida</span>
+                    <span id="paper-status" class="mini-badge">SEM DADOS</span>
+                </div>
+            </div>
+
+            <div id="paper-metrics" class="paper-metric-grid"></div>
+
+            <div class="paper-chart-panel">
+                <div class="paper-chart-heading">
+                    <div>
+                        <span>Curva de equity</span>
+                        <strong id="paper-equity-current">R$ 0,00</strong>
+                    </div>
+                    <div class="paper-chart-stats">
+                        <span>Retorno <strong id="paper-return">0%</strong></span>
+                        <span>Drawdown <strong id="paper-drawdown">0%</strong></span>
+                        <span>Pontos <strong id="paper-curve-points">0</strong></span>
+                    </div>
+                </div>
+                <div class="equity-chart-wrap">
+                    <svg id="paper-equity-chart" class="equity-chart" viewBox="0 0 900 220" role="img" aria-label="Curva de equity da conta paper"></svg>
+                    <div id="paper-chart-empty" class="chart-empty">Aguardando histórico da conta paper.</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="two-column-grid paper-tables">
+            <article class="panel table-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Paper exposure</p>
+                        <h2>Posições Paper</h2>
+                    </div>
+                    <span id="paper-positions-count" class="count-label">0 registros</span>
+                </div>
+                <div class="table-wrap compact-table">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Mercado</th>
+                            <th>Perna</th>
+                            <th>Quantidade</th>
+                            <th>Entrada</th>
+                            <th>Mark</th>
+                            <th>PnL</th>
+                            <th>Status</th>
+                        </tr>
+                        </thead>
+                        <tbody id="paper-positions-body"></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel table-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Paper ledger</p>
+                        <h2>Trades Paper</h2>
+                    </div>
+                    <span id="paper-trades-count" class="count-label">0 registros</span>
+                </div>
+                <div class="table-wrap compact-table">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Horário</th>
+                            <th>Mercado</th>
+                            <th>Lado</th>
+                            <th>Perna</th>
+                            <th>Quantidade</th>
+                            <th>Preço</th>
+                            <th>Taxa</th>
+                        </tr>
+                        </thead>
+                        <tbody id="paper-trades-body"></tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+
+        <section id="markets-panel" class="panel table-panel">
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">Market data</p>
+                    <h2>Mercados recentes</h2>
+                </div>
+                <span id="markets-count" class="count-label">0 registros</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Mercado</th>
+                        <th>Plataforma</th>
+                        <th>YES</th>
+                        <th>NO</th>
+                        <th>Status</th>
+                    </tr>
+                    </thead>
+                    <tbody id="markets-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="orders-panel" class="panel table-panel">
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">OMS</p>
+                    <h2>Ordens</h2>
+                </div>
+                <span id="orders-count" class="count-label">0 registros</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Venue</th>
+                        <th>Perna</th>
+                        <th>Lado</th>
+                        <th>Quantidade</th>
+                        <th>Preço</th>
+                        <th>Status</th>
+                    </tr>
+                    </thead>
+                    <tbody id="orders-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="two-column-grid">
+            <article id="positions-panel" class="panel table-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Exposição</p>
+                        <h2>Posições</h2>
+                    </div>
+                    <span id="positions-count" class="count-label">0 registros</span>
+                </div>
+                <div class="table-wrap compact-table">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Mercado</th>
+                            <th>Quantidade</th>
+                            <th>PnL</th>
+                            <th>Status</th>
+                        </tr>
+                        </thead>
+                        <tbody id="positions-body"></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article id="router-panel" class="panel table-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Venues</p>
+                        <h2>Desempenho do Router</h2>
+                    </div>
+                    <span id="venues-count" class="count-label">0 venues</span>
+                </div>
+                <div class="table-wrap compact-table">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Venue</th>
+                            <th>Sucesso</th>
+                            <th>Latência</th>
+                            <th>Slippage</th>
+                            <th>Amostras</th>
+                        </tr>
+                        </thead>
+                        <tbody id="venues-body"></tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+
+        <section class="two-column-grid">
+            <article id="events-panel" class="panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Event Bus</p>
+                        <h2>Eventos recentes</h2>
+                    </div>
+                </div>
+                <div id="events-list" class="events-list"></div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Integridade</p>
+                        <h2>Diagnóstico das fontes</h2>
+                    </div>
+                </div>
+                <div id="diagnostics-list" class="diagnostics-list"></div>
+            </article>
+        </section>
+
+        <footer class="footer">
+            <span>PredArb Framework</span>
+            <span>Dashboard somente leitura</span>
+        </footer>
+    </main>
+</div>
+
+<script>
+    window.PREDARB_DASHBOARD = {
+        apiBase: {{ api_base | tojson }},
+        routerWsPath: {{ router_ws_path | tojson }}
+    };
+</script>
+<script type="module" src="/dashboard/static/js/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+name: mock_market
+version: 1.0.0
+description: Mock Prediction Market Connector
+entrypoint: mock_market.plugin.MockMarketPlugin

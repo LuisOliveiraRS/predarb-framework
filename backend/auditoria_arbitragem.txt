@@ -1,0 +1,330 @@
+
+==================================================
+ARQUIVO: .\app\engine\arbitrage_engine.py
+==================================================
+
+from app.repositories.market_repository import market_repository
+
+from app.market.comparators.cross_platform import (
+    CrossPlatformComparator,
+)
+
+from app.pipeline.pipeline_builder import pipeline_builder
+
+from app.events.event_bus import event_bus
+from app.events.types.opportunity_found import (
+    OpportunityFoundEvent,
+)
+
+
+class ArbitrageEngine:
+    """
+    Engine principal do PredArb.
+
+    Fluxo:
+
+        Repository
+            ↓
+        Comparator
+            ↓
+        Event Bus
+            ↓
+        Pipeline
+            ↓
+        Resultado
+    """
+
+    def __init__(self):
+
+        self.comparator = CrossPlatformComparator()
+
+        self.pipeline = pipeline_builder.build()
+
+    def load_markets(self):
+        """
+        Carrega todos os mercados
+        disponíveis.
+        """
+
+        return market_repository.all()
+
+    def find_opportunities(self, markets):
+        """
+        Executa a comparação entre
+        plataformas.
+        """
+
+        return self.comparator.compare(markets)
+
+    def publish_events(self, opportunities):
+        """
+        Publica um evento para cada
+        oportunidade encontrada.
+        """
+
+        for opportunity in opportunities:
+
+            event_bus.publish(
+
+                OpportunityFoundEvent(
+                    opportunity
+                )
+
+            )
+
+    def process_pipeline(self, opportunities):
+        """
+        Executa todo o Pipeline.
+        """
+
+        return self.pipeline.run(
+            opportunities
+        )
+
+    def scan(self):
+        """
+        Fluxo principal da Engine.
+
+            Repository
+                ↓
+            Comparator
+                ↓
+            EventBus
+                ↓
+            Pipeline
+                ↓
+            Resultado
+        """
+
+        #
+        # 1 - Carrega mercados
+        #
+
+        markets = self.load_markets()
+
+        #
+        # 2 - Procura oportunidades
+        #
+
+        opportunities = self.find_opportunities(
+            markets
+        )
+
+        #
+        # 3 - Publica eventos
+        #
+
+        self.publish_events(
+            opportunities
+        )
+
+        #
+        # 4 - Executa Pipeline
+        #
+
+        opportunities = self.process_pipeline(
+            opportunities
+        )
+
+        #
+        # 5 - Retorna resultado
+        #
+
+
+
+        return opportunities
+
+
+arbitrage_engine = ArbitrageEngine()
+
+==================================================
+ARQUIVO: .\app\pipeline\pipeline_builder.py
+==================================================
+
+from app.pipeline.pipeline import Pipeline
+
+from app.pipeline.stages.market_stage import MarketStage
+from app.pipeline.stages.signal_stage import SignalStage
+from app.pipeline.stages.arbitrage_stage import ArbitrageStage
+from app.pipeline.stages.execution_stage import ExecutionStage
+
+
+class PipelineBuilder:
+
+    """
+    Constrói o pipeline institucional.
+    """
+
+    def build(self):
+
+        pipeline = Pipeline()
+
+        pipeline.add_stage(
+
+            MarketStage()
+
+        )
+
+        pipeline.add_stage(
+
+            SignalStage()
+
+        )
+
+        pipeline.add_stage(
+
+            ArbitrageStage()
+
+        )
+
+        pipeline.add_stage(
+
+            ExecutionStage()
+
+        )
+
+        return pipeline
+
+
+pipeline_builder = PipelineBuilder()
+
+==================================================
+ARQUIVO: .\app\pipeline\stages\arbitrage_stage.py
+==================================================
+
+from app.engine.arbitrage_engine import (
+    arbitrage_engine
+)
+
+
+class ArbitrageStage:
+
+    def execute(
+
+        self,
+
+        context
+
+    ):
+
+        context.opportunity = (
+
+            arbitrage_engine.find(
+
+                context.signal
+
+            )
+
+        )
+
+        return context
+
+==================================================
+ARQUIVO: .\app\engine\arbitrage_calculator.py
+==================================================
+
+class ArbitrageCalculator:
+
+    """
+    Calcula arbitragem entre YES e NO.
+    """
+
+    def calculate(self, yes_price, no_price):
+
+        total = yes_price + no_price
+
+        if total >= 1:
+            return None
+
+        profit = 1 - total
+
+        roi = (profit / total) * 100
+
+        return {
+
+            "prices": {
+
+                "yes": yes_price,
+                "no": no_price
+
+            },
+
+            "stake": {
+
+                "yes": yes_price,
+                "no": no_price,
+                "total": total
+
+            },
+
+            "profit": round(profit, 4),
+
+            "roi": round(roi, 2)
+
+        }
+
+
+calculator = ArbitrageCalculator()
+
+==================================================
+ARQUIVO: .\app\engine\opportunity_builder.py
+==================================================
+
+from app.engine.arbitrage_calculator import calculator
+
+
+class OpportunityBuilder:
+
+    """
+    Responsável por transformar dois mercados
+    em uma oportunidade completa.
+    """
+
+    def build(
+
+        self,
+
+        market_yes,
+
+        market_no
+
+    ):
+
+        result = calculator.calculate(
+
+            market_yes["yes"],
+
+            market_no["no"]
+
+        )
+
+        if not result:
+
+            return None
+
+        return {
+
+            **result,
+
+            "question": market_yes["question"],
+
+            "buy_yes_platform": market_yes["platform"],
+
+            "buy_no_platform": market_no["platform"],
+
+            "platforms": [
+
+                market_yes["platform"],
+
+                market_no["platform"]
+
+            ],
+
+            "market_yes": market_yes,
+
+            "market_no": market_no
+
+        }
+
+
+opportunity_builder = OpportunityBuilder()

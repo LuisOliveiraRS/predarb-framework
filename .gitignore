@@ -1,0 +1,99 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
+# Python cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PredArb generated and local runtime artifacts
+
+# Compressed audits and manual archives
+*.zip
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Append-only runtime logs
+*.jsonl
+
+# Runtime Paper state and generated reports
+backend/paper_data/
+backend/paper_data_backup_*/
+backend/real_test_reports/
+
+# Repository and audit copies
+backend/repository_archive/
+backend/predarb-backup-*/
+backend/predarb-final-audit/
+
+# Backup directories
+backend/app/pipeline_backup_*/
+
+# Manual source backups
+backend/app/core/*_backup_*.py
+backend/app/api/routers/*_backup_*.py
+backend/app/dashboard/*_backup_*.py
+backend/app/paper/*_backup_*.py
+backend/app/pipeline/*_backup_*.py
+backend/tests/*_backup_*.py
+backend/scripts/real_tests/*_backup.*
+
+# Environment backups
+backend/.env_backup*
+
+# PredArb legacy backups and audit copies
+
+# Generic backup files
+*.bak
+
+# Historical backup trees
+backend/backups/
+backend/app/*backup*/
+
+# Extracted audit copies
+backend/ai-auditoria/
+backend/auditoria_connectors/
+backend/auditoria_services/
+
+# Backup scripts in any scripts subdirectory
+backend/scripts/**/*_backup.*
+
+# PredArb installation payload copies
+backend/payload/
+backend/repair_payload/
+
+# Historical pre-repair source copies
+backend/app/core/application_before_routes_repair_*.py
+
+# Local assistant and generated inventory
+.agent.md
+backend/estrutura_backend.txt
+
+# PredArb superseded historical source files
+backend/app/core/application_before_*.py
+backend/app/dashboard/router-old.py
+backend/scripts/real_tests/*_before_*.py
+backend/scripts/real_tests/*_before_*.ps1
