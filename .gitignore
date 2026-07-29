@@ -97,3 +97,6 @@ backend/app/core/application_before_*.py
 backend/app/dashboard/router-old.py
 backend/scripts/real_tests/*_before_*.py
 backend/scripts/real_tests/*_before_*.ps1
+
+# PredArb scheduler local backups
+backend/app/scheduler/*_backup_*.py
