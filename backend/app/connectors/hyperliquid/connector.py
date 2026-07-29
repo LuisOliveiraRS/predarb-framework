@@ -213,6 +213,73 @@ class HyperliquidConnector(BaseConnector):
 
         return status
 
+    async def get_account_snapshot(
+        self,
+        user: str,
+        *,
+        dex: str = "",
+    ) -> dict[str, Any]:
+        """
+        Consulta uma conta real da Hyperliquid
+        usando apenas o endereco publico.
+
+        O conector nao recebe chaves privadas,
+        nao assina mensagens e nao envia ordens.
+        """
+
+        try:
+            snapshot = (
+                await self.provider
+                .get_account_snapshot(
+                    user,
+                    dex=dex,
+                )
+            )
+
+        except Exception as exc:
+            self.mark_error(
+                exc
+            )
+
+            raise
+
+        self.mark_connected(
+            True
+        )
+
+        summary = snapshot.get(
+            "summary",
+            {},
+        )
+
+        self._last_details = {
+            **self._last_details,
+            "account_read_only": True,
+            "account_address": (
+                snapshot.get(
+                    "account_address"
+                )
+            ),
+            "account_summary": (
+                dict(summary)
+                if isinstance(
+                    summary,
+                    Mapping,
+                )
+                else {}
+            ),
+            "wallet_signing": False,
+            "private_key_access": False,
+            "credential_access": False,
+            "exchange_endpoint_available": False,
+            "order_submission_available": False,
+            "execution_authorized": False,
+            "live_execution": False,
+            "financial_execution": False,
+        }
+
+        return snapshot
+
     async def get_markets(
         self,
     ) -> list[dict[str, Any]]:

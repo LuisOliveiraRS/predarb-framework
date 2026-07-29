@@ -188,6 +188,155 @@ class HyperliquidProvider:
 
         return await self.get_outcome_snapshot()
 
+    async def get_account_snapshot(
+        self,
+        user: str,
+        *,
+        dex: str = "",
+    ) -> dict[str, Any]:
+        """
+        Recupera um snapshot real da conta
+        usando apenas o endereco publico.
+
+        Nenhuma assinatura, chave privada ou
+        endpoint de execucao e utilizado.
+        """
+
+        started_at = perf_counter()
+
+        normalized_user = (
+            self.client.normalize_user_address(
+                user
+            )
+        )
+
+        role = await self.client.user_role(
+            normalized_user
+        )
+
+        perpetual = (
+            await self.client
+            .clearinghouse_state(
+                normalized_user,
+                dex=dex,
+            )
+        )
+
+        spot = (
+            await self.client
+            .spot_clearinghouse_state(
+                normalized_user
+            )
+        )
+
+        open_orders = (
+            await self.client.open_orders(
+                normalized_user,
+                dex=dex,
+            )
+        )
+
+        fills = await self.client.user_fills(
+            normalized_user,
+            aggregate_by_time=True,
+        )
+
+        portfolio = (
+            await self.client.portfolio(
+                normalized_user
+            )
+        )
+
+        latency = (
+            perf_counter()
+            - started_at
+        ) * 1000
+
+        perpetual_positions = (
+            perpetual.get(
+                "assetPositions",
+                [],
+            )
+            if isinstance(
+                perpetual,
+                Mapping,
+            )
+            else []
+        )
+
+        spot_balances = (
+            spot.get(
+                "balances",
+                [],
+            )
+            if isinstance(
+                spot,
+                Mapping,
+            )
+            else []
+        )
+
+        snapshot = {
+            "status": "online",
+            "connector": "hyperliquid",
+            "account_address": (
+                normalized_user
+            ),
+            "dex": dex.strip(),
+            "latency": round(
+                latency,
+                3,
+            ),
+            "role": role,
+            "perpetual": perpetual,
+            "spot": spot,
+            "open_orders": open_orders,
+            "fills": fills,
+            "portfolio": portfolio,
+            "summary": {
+                "perpetual_positions": (
+                    len(perpetual_positions)
+                    if isinstance(
+                        perpetual_positions,
+                        list,
+                    )
+                    else 0
+                ),
+                "spot_balances": (
+                    len(spot_balances)
+                    if isinstance(
+                        spot_balances,
+                        list,
+                    )
+                    else 0
+                ),
+                "open_orders": len(
+                    open_orders
+                ),
+                "fills": len(
+                    fills
+                ),
+                "portfolio_entries": len(
+                    portfolio
+                ),
+            },
+            "account_data_real": True,
+            "public_address_only": True,
+            "read_only": True,
+            "wallet_signing": False,
+            "private_key_access": False,
+            "credential_access": False,
+            "exchange_endpoint_available": False,
+            "order_submission_available": False,
+            "execution_authorized": False,
+            "live_execution": False,
+            "financial_execution": False,
+            "automatic_execution_authorized": False,
+            "next_step_authorized": False,
+        }
+
+        return snapshot
+
     async def close(self) -> None:
         """
         Encerra recursos externos quando aplicável.

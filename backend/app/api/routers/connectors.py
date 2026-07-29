@@ -120,6 +120,79 @@ async def refresh_markets() -> dict[str, Any]:
     }
 
 
+@router.get(
+    "/hyperliquid/account/{user}"
+)
+async def hyperliquid_account_snapshot(
+    user: str,
+    dex: str = "",
+) -> dict[str, Any]:
+    """
+    Consulta uma conta real da Hyperliquid
+    usando somente o endereco publico.
+    """
+
+    connector_name = "hyperliquid"
+
+    if not connector_manager.exists(
+        connector_name
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "O conector Hyperliquid "
+                "nao esta disponivel."
+            ),
+        )
+
+    connector = connector_manager.require(
+        connector_name
+    )
+
+    account_method = getattr(
+        connector,
+        "get_account_snapshot",
+        None,
+    )
+
+    if not callable(
+        account_method
+    ):
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "O conector Hyperliquid "
+                "nao oferece consulta de conta."
+            ),
+        )
+
+    try:
+        snapshot = await account_method(
+            user,
+            dex=dex,
+        )
+
+    except (
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Nao foi possivel consultar "
+                "a conta Hyperliquid."
+            ),
+        ) from exc
+
+    return snapshot
+
+
 @router.get("/{connector_name}")
 async def connector_status(
     connector_name: str,
