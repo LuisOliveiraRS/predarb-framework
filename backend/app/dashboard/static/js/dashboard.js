@@ -74,6 +74,148 @@ function renderPortfolio(snapshot) {
     }
 }
 
+
+function opportunityLeg(row, key) {
+    const leg = row?.[key];
+
+    if (leg && typeof leg === "object") {
+        const venue = first(
+            leg,
+            ["platform", "venue", "exchange", "source"],
+            "?",
+        );
+
+        const price = first(
+            leg,
+            ["price", "odds", "value"],
+            null,
+        );
+
+        return price === null
+            ? venue
+            : `${venue} @ ${formatNumber(price, 4)}`;
+    }
+
+    return leg || "?";
+}
+
+function renderOpportunities(snapshot) {
+    const rows = collection(
+        snapshot?.data?.opportunities
+        ?? snapshot?.opportunities,
+    ).slice(0, 50);
+
+    byId("opportunities-count").textContent =
+        `${rows.length} registros`;
+
+    renderRows(
+        byId("opportunities-body"),
+        rows,
+        [
+            {
+                value: (row) => first(
+                    row,
+                    [
+                        "question",
+                        "title",
+                        "market",
+                        "symbol",
+                        "id",
+                    ],
+                    "Mercado n?o informado",
+                ),
+                className: "table-primary",
+                title: (row) => first(
+                    row,
+                    [
+                        "question",
+                        "title",
+                        "market",
+                        "symbol",
+                        "id",
+                    ],
+                    "",
+                ),
+            },
+            {
+                value: (row) => opportunityLeg(
+                    row,
+                    "buy_yes",
+                ),
+            },
+            {
+                value: (row) => opportunityLeg(
+                    row,
+                    "buy_no",
+                ),
+            },
+            {
+                value: (row) => formatCurrency(
+                    first(
+                        row,
+                        ["cost", "total_cost", "notional"],
+                        0,
+                    ),
+                ),
+            },
+            {
+                value: (row) => formatCurrency(
+                    first(
+                        row,
+                        ["profit", "expected_profit", "pnl"],
+                        0,
+                    ),
+                ),
+            },
+            {
+                value: (row) => {
+                    const cost = Number(
+                        first(
+                            row,
+                            ["cost", "total_cost", "notional"],
+                            0,
+                        ),
+                    );
+
+                    const profit = Number(
+                        first(
+                            row,
+                            ["profit", "expected_profit", "pnl"],
+                            0,
+                        ),
+                    );
+
+                    const explicitRoi = first(
+                        row,
+                        ["roi", "roi_percent", "return_rate"],
+                        null,
+                    );
+
+                    const roi = explicitRoi === null
+                        ? (
+                            cost > 0
+                                ? (profit / cost) * 100
+                                : 0
+                        )
+                        : Number(explicitRoi);
+
+                    return `${formatNumber(roi, 2)}%`;
+                },
+            },
+            {
+                value: (row) => badge(
+                    first(
+                        row,
+                        ["status", "state"],
+                        "DETECTED",
+                    ),
+                ),
+            },
+        ],
+        "Nenhuma oportunidade detectada",
+    );
+}
+
 function renderMarkets(snapshot) {
     const rows = collection(snapshot?.data?.markets).slice(0, 20);
     byId("markets-count").textContent = `${rows.length} registros`;
@@ -406,6 +548,7 @@ function applySnapshot(snapshot) {
     renderCards(byId("metric-cards"), snapshot.cards || []);
     renderPortfolio(snapshot);
     renderMarkets(snapshot);
+    renderOpportunities(snapshot);
     renderOrders(snapshot);
     renderPositions(snapshot);
     renderPaper(snapshot);
@@ -472,15 +615,145 @@ function startWebSocket() {
     window.addEventListener("beforeunload", () => socket.close(), { once: true });
 }
 
-function initializeNavigation() {
-    const links = document.querySelectorAll(".nav-link[href^='#']");
-    for (const link of links) {
-        link.addEventListener("click", () => {
-            for (const other of links) {
-                other.classList.toggle("active", other === link);
-            }
-        });
+
+const DASHBOARD_VIEWS = {
+    overview: "Vis?o Geral",
+    "markets-panel": "Mercados",
+    "opportunities-panel": "Oportunidades",
+    "orders-panel": "Ordens",
+    "positions-panel": "Posi??es",
+    "paper-panel": "Conta Paper",
+    "router-panel": "AI Router",
+    "events-panel": "Eventos",
+};
+
+function topLevelSection(element) {
+    const main = document.querySelector(".main-content");
+    let current = element;
+
+    while (
+        current?.parentElement
+        && current.parentElement !== main
+    ) {
+        current = current.parentElement;
     }
+
+    return current;
+}
+
+function activateDashboardView() {
+    const requestedId = (
+        window.location.hash || "#overview"
+    ).slice(1);
+
+    const viewId = DASHBOARD_VIEWS[requestedId]
+        ? requestedId
+        : "overview";
+
+    const target = document.getElementById(viewId);
+    const main = document.querySelector(".main-content");
+
+    if (!target || !main) {
+        return;
+    }
+
+    const directSections = Array.from(
+        main.children,
+    ).filter(
+        (element) => element.tagName === "SECTION",
+    );
+
+    for (const section of directSections) {
+        section.hidden = true;
+    }
+
+    for (const nestedId of [
+        "positions-panel",
+        "router-panel",
+    ]) {
+        const nested = document.getElementById(nestedId);
+
+        if (nested) {
+            nested.hidden = false;
+        }
+    }
+
+    const root = topLevelSection(target);
+
+    if (root) {
+        root.hidden = false;
+    }
+
+    if (viewId === "paper-panel") {
+        const paperTables = document.querySelector(
+            '[data-dashboard-group="paper"]',
+        );
+
+        if (paperTables) {
+            paperTables.hidden = false;
+        }
+    }
+
+    if (viewId === "positions-panel") {
+        const routerPanel = byId("router-panel");
+
+        if (routerPanel) {
+            routerPanel.hidden = true;
+        }
+    }
+
+    if (viewId === "router-panel") {
+        const positionsPanel = byId("positions-panel");
+
+        if (positionsPanel) {
+            positionsPanel.hidden = true;
+        }
+    }
+
+    const title = byId("overview-title");
+
+    if (title) {
+        title.textContent = DASHBOARD_VIEWS[viewId];
+    }
+
+    const links = document.querySelectorAll(
+        ".nav-link[href^='#']",
+    );
+
+    for (const link of links) {
+        link.classList.toggle(
+            "active",
+            link.getAttribute("href") === `#${viewId}`,
+        );
+    }
+
+    window.scrollTo({
+        top: 0,
+        behavior: "instant",
+    });
+}
+
+function initializeNavigation() {
+    const links = document.querySelectorAll(
+        ".nav-link[href^='#']",
+    );
+
+    for (const link of links) {
+        link.addEventListener(
+            "click",
+            () => window.setTimeout(
+                activateDashboardView,
+                0,
+            ),
+        );
+    }
+
+    window.addEventListener(
+        "hashchange",
+        activateDashboardView,
+    );
+
+    activateDashboardView();
 }
 
 async function initialize() {

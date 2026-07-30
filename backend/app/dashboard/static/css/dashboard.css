@@ -936,3 +936,29 @@ tbody tr:hover {
         grid-template-columns: 1fr;
     }
 }
+
+
+.main-content > section[hidden],
+.main-content article[hidden] {
+    display: none !important;
+}
+
+.opportunities-table {
+    min-width: 980px;
+}
+
+.opportunities-table td:nth-child(5) {
+    font-weight: 700;
+}
+
+.nav-link.active {
+    border-color: rgba(95, 129, 255, 0.35);
+    background: rgba(95, 129, 255, 0.12);
+    color: var(--text);
+}
+
+@media (max-width: 720px) {
+    .opportunities-table {
+        min-width: 840px;
+    }
+}
