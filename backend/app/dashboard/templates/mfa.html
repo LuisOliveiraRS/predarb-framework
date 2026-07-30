@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+    <meta
+        name="robots"
+        content="noindex, nofollow"
+    >
+    <title>Autenticacao em duas etapas | {{ app_name }}</title>
+
+    <link
+        rel="stylesheet"
+        href="/dashboard/static/css/auth.css"
+    >
+    <link
+        rel="stylesheet"
+        href="/dashboard/static/css/mfa.css?v=2"
+    >
+</head>
+
+<body class="auth-page">
+    <main class="auth-layout">
+        <section
+            class="auth-card mfa-card"
+            aria-labelledby="mfa-title"
+        >
+            <header class="auth-brand">
+                <div
+                    class="auth-logo"
+                    aria-hidden="true"
+                >
+                    PA
+                </div>
+
+                <div>
+                    <p class="auth-product">
+                        {{ app_name }}
+                    </p>
+
+                    <p class="auth-subtitle">
+                        Seguranca administrativa
+                    </p>
+                </div>
+            </header>
+
+            <div class="auth-heading">
+                <p class="auth-eyebrow">
+                    PROTECA SUA CONTA
+                </p>
+
+                <h1 id="mfa-title">
+                    Autenticacao em duas etapas
+                </h1>
+
+                <p>
+                    Use um aplicativo autenticador para
+                    elevar sua sessao ao nivel AAL2.
+                </p>
+            </div>
+
+            <section
+                id="mfa-start-panel"
+                class="mfa-panel"
+            >
+                <p class="mfa-description">
+                    O PredArb gerara um QR Code temporario.
+                    Escaneie-o no Google Authenticator,
+                    Microsoft Authenticator, Authy ou outro
+                    aplicativo TOTP compativel.
+                </p>
+
+                <button
+                    id="mfa-start-button"
+                    class="auth-submit"
+                    type="button"
+                >
+                    Configurar autenticador
+                </button>
+            </section>
+
+            <section
+                id="mfa-setup-panel"
+                class="mfa-panel"
+                hidden
+            >
+                <div
+                    id="mfa-enrollment-qr"
+                    class="mfa-qr-container"
+                >
+                    <img
+                        id="mfa-qr-image"
+                        class="mfa-qr-image"
+                        alt="QR Code para configurar o autenticador"
+                    >
+                </div>
+
+                <div
+                    id="mfa-enrollment-manual"
+                    class="mfa-manual"
+                >
+                    <p>
+                        Caso nao consiga escanear, informe
+                        esta chave manualmente:
+                    </p>
+
+                    <div class="mfa-secret-row">
+                        <code
+                            id="mfa-secret"
+                            class="mfa-secret"
+                        ></code>
+
+                        <button
+                            id="mfa-copy-button"
+                            class="mfa-copy-button"
+                            type="button"
+                        >
+                            Copiar
+                        </button>
+                    </div>
+                </div>
+
+                <form
+                    id="mfa-verify-form"
+                    class="auth-form"
+                    novalidate
+                >
+                    <label for="mfa-code">
+                        Codigo de seis digitos
+                    </label>
+
+                    <input
+                        id="mfa-code"
+                        name="code"
+                        type="text"
+                        inputmode="numeric"
+                        autocomplete="one-time-code"
+                        pattern="[0-9]{6}"
+                        minlength="6"
+                        maxlength="6"
+                        placeholder="000000"
+                        required
+                    >
+
+                    <button
+                        id="mfa-verify-button"
+                        class="auth-submit"
+                        type="submit"
+                    >
+                        Confirmar e ativar MFA
+                    </button>
+                </form>
+
+                <p
+                    id="mfa-enrollment-warning"
+                    class="mfa-warning"
+                >
+                    Nao atualize esta pagina antes de concluir
+                    a verificacao.
+                </p>
+            </section>
+
+            <div
+                id="mfa-message"
+                class="auth-message"
+                role="status"
+                aria-live="polite"
+            ></div>
+
+            <div class="auth-link-row">
+                <a href="/dashboard">
+                    Voltar ao dashboard
+                </a>
+            </div>
+
+            <div class="auth-security">
+                <span aria-hidden="true">?</span>
+                Tokens protegidos por cookies HttpOnly
+            </div>
+        </section>
+    </main>
+
+    <script
+        type="module"
+        src="/dashboard/static/js/mfa.js?v=4"
+    ></script>
+</body>
+</html>

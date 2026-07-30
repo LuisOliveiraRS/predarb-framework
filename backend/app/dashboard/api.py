@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
+
+from app.auth.dependencies import require_dashboard_user
 
 from app.dashboard.dashboard_service import dashboard_service
 from app.dashboard.manager import dashboard_manager
 
 
 router = APIRouter(
+    dependencies=[Depends(require_dashboard_user)],
     prefix="/dashboard/api",
     tags=["Dashboard"],
 )

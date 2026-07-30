@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.core.settings import settings
+
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -50,3 +52,74 @@ async def dashboard_index_redirect() -> RedirectResponse:
         url="/dashboard",
         status_code=307,
     )
+
+
+@router.get("/login", include_in_schema=False)
+async def login_page(request: Request):
+    response = templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "request": request,
+            "app_name": settings.APP_NAME,
+        },
+    )
+
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get(
+    "/esqueci-senha",
+    include_in_schema=False,
+    name="forgot_password_page",
+)
+async def forgot_password_page(request: Request):
+    response = templates.TemplateResponse(
+        request=request,
+        name="forgot_password.html",
+        context={
+            "request": request,
+            "app_name": settings.APP_NAME,
+        },
+    )
+
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get(
+    "/redefinir-senha",
+    include_in_schema=False,
+    name="password_reset_page",
+)
+async def password_reset_page(request: Request):
+    response = templates.TemplateResponse(
+        request=request,
+        name="reset_password.html",
+        context={
+            "request": request,
+            "app_name": settings.APP_NAME,
+        },
+    )
+
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+@router.get(
+    "/mfa",
+    include_in_schema=False,
+    name="mfa_page",
+)
+async def mfa_page(request: Request):
+    response = templates.TemplateResponse(
+        request=request,
+        name="mfa.html",
+        context={
+            "request": request,
+            "app_name": settings.APP_NAME,
+        },
+    )
+
+    response.headers["Cache-Control"] = "no-store"
+    return response
