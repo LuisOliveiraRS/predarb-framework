@@ -59,7 +59,28 @@ class DashboardBuilder:
             "opportunities": int(self._number(data.get("opportunities"))),
             "orders": int(self._number(data.get("orders"))),
             "positions": int(self._number(data.get("positions"))),
-            "portfolio": round(self._number(data.get("portfolio")), 2),
+            "portfolio": round(
+                self._number(
+                    (
+                        data.get("portfolio", {}).get(
+                            "total",
+                            data.get("portfolio", {}).get(
+                                "equity",
+                                data.get("portfolio", {}).get(
+                                    "value",
+                                    0.0,
+                                ),
+                            ),
+                        )
+                        if isinstance(
+                            data.get("portfolio"),
+                            dict,
+                        )
+                        else data.get("portfolio")
+                    )
+                ),
+                2,
+            ),
             "pnl": round(self._number(data.get("pnl")), 2),
             "connections": int(self._number(data.get("connections"))),
             "ai_confidence": round(self._number(data.get("ai_confidence")), 4),

@@ -50,14 +50,69 @@ def _default_trades() -> list[Any]:
 
 
 def _default_portfolio() -> dict[str, Any]:
+    """Resumo financeiro alinhado ? conta Paper oficial."""
+
+    try:
+        from app.paper.paper_runtime import paper_account_runtime
+
+        if paper_account_runtime.enabled:
+            account = paper_account_runtime.account.snapshot(
+                include_trades=False
+            )
+            wallet = account.get("wallet", {}) or {}
+
+            total = float(
+                account.get(
+                    "equity",
+                    wallet.get("balance", 0.0),
+                )
+                or 0.0
+            )
+            available = float(
+                wallet.get(
+                    "available",
+                    wallet.get("cash", 0.0),
+                )
+                or 0.0
+            )
+            locked = float(wallet.get("locked", 0.0) or 0.0)
+
+            return {
+                "total": total,
+                "equity": total,
+                "available": available,
+                "locked": locked,
+                "utilization": (
+                    locked / total
+                    if total > 0
+                    else 0.0
+                ),
+                "source": "paper_account",
+            }
+    except Exception:
+        pass
+
     try:
         from app.portfolio.bankroll import bankroll
 
         return {
-            "total": float(getattr(bankroll, "total", 0.0) or 0.0),
-            "available": float(getattr(bankroll, "available", 0.0) or 0.0),
-            "locked": float(getattr(bankroll, "locked", 0.0) or 0.0),
-            "utilization": float(getattr(bankroll, "utilization", 0.0) or 0.0),
+            "total": float(
+                getattr(bankroll, "total", 0.0)
+                or 0.0
+            ),
+            "available": float(
+                getattr(bankroll, "available", 0.0)
+                or 0.0
+            ),
+            "locked": float(
+                getattr(bankroll, "locked", 0.0)
+                or 0.0
+            ),
+            "utilization": float(
+                getattr(bankroll, "utilization", 0.0)
+                or 0.0
+            ),
+            "source": "bankroll",
         }
     except Exception:
         return {}

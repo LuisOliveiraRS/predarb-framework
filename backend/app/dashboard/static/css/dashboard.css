@@ -769,7 +769,7 @@ tbody tr:hover {
 
 .paper-metric-grid {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
     gap: 10px;
     margin-top: 18px;
 }
@@ -797,10 +797,12 @@ tbody tr:hover {
 
 .paper-metric strong {
     margin-top: 7px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 18px;
+    overflow: visible;
+    text-overflow: clip;
     white-space: nowrap;
+    font-size: clamp(15px, 1.15vw, 18px);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
 }
 
 .paper-metric small {
