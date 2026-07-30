@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.ai.runtime import ai_runtime
@@ -328,6 +329,33 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    if settings.PUBLIC_CORS_ENABLED:
+        allowed_origins = [
+            origin
+            for origin in (
+                settings
+                .PUBLIC_CORS_ALLOWED_ORIGINS
+                .split(",")
+            )
+            if origin
+        ]
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=False,
+            allow_methods=[
+                "GET",
+                "POST",
+                "OPTIONS",
+            ],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+            ],
+        )
+
+
     app.state.startup_completed = False
     app.state.startup_error = None
     app.state.connector_startup = {}
@@ -357,29 +385,51 @@ def create_app() -> FastAPI:
             },
         }
 
-    @app.get("/health")
-    async def health():
-        startup_completed = bool(app.state.startup_completed)
-        startup_error = app.state.startup_error
+    def _health_status() -> str:
+        startup_completed = bool(
+            getattr(app.state, "startup_completed", False)
+        )
+        startup_error = getattr(
+            app.state,
+            "startup_error",
+            None,
+        )
 
         if startup_error:
-            health_status = "degraded"
-        elif startup_completed:
-            health_status = "healthy"
-        else:
-            health_status = "starting"
+            return "degraded"
+        if startup_completed:
+            return "healthy"
+        return "starting"
 
+    def _health_details() -> dict[str, Any]:
         return {
-            "status": health_status,
+            "status": _health_status(),
             "version": settings.APP_VERSION,
-            "startup_error": startup_error,
-            "lifecycle": dict(app.state.lifecycle),
-            "initial_markets": int(app.state.initial_market_count or 0),
+            "startup_error": getattr(
+                app.state,
+                "startup_error",
+                None,
+            ),
+            "lifecycle": dict(
+                getattr(app.state, "lifecycle", {}) or {}
+            ),
+            "initial_markets": int(
+                getattr(
+                    app.state,
+                    "initial_market_count",
+                    0,
+                )
+                or 0
+            ),
             "connectors": connector_manager.statuses(),
             "connector_configuration": {
                 "mock_enabled": settings.MOCK_CONNECTOR_ENABLED,
-                "hyperliquid_enabled": settings.HYPERLIQUID_CONNECTOR_ENABLED,
-                "initial_sync_enabled": settings.INITIAL_MARKET_SYNC_ENABLED,
+                "hyperliquid_enabled": (
+                    settings.HYPERLIQUID_CONNECTOR_ENABLED
+                ),
+                "initial_sync_enabled": (
+                    settings.INITIAL_MARKET_SYNC_ENABLED
+                ),
             },
             "scheduler": {
                 "enabled": settings.SCHEDULER_ENABLED,
@@ -396,6 +446,21 @@ def create_app() -> FastAPI:
             "paper": paper_account_runtime.status(),
             "paper_session": paper_session_runtime.status(),
         }
+
+    @app.get("/health", include_in_schema=False)
+    async def health():
+        return {
+            "status": _health_status(),
+            "version": settings.APP_VERSION,
+        }
+
+    if settings.DEBUG:
+        @app.get(
+            "/internal/health",
+            include_in_schema=False,
+        )
+        async def internal_health():
+            return _health_details()
 
     @app.get("/version")
     async def version():
