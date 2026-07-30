@@ -629,6 +629,7 @@ const DASHBOARD_VIEWS = {
     overview: "Vis?o Geral",
     "markets-panel": "Mercados",
     "opportunities-panel": "Oportunidades",
+    "real-radar-panel": "Radar Real",
     "orders-panel": "Ordens",
     "positions-panel": "Posi??es",
     "paper-panel": "Conta Paper",
@@ -778,3 +779,251 @@ initialize().catch((error) => {
     console.error("Falha ao iniciar o Dashboard", error);
     showAlert(error?.message || "Falha ao iniciar o Dashboard.");
 });
+
+
+const realRadarState = {
+  timer: null,
+  loading: false,
+};
+
+function realRadarNumber(value, digits = 3) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return "?";
+  }
+
+  return parsed.toFixed(digits);
+}
+
+function realRadarPercent(value) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return "?";
+  }
+
+  return `${(parsed * 100).toFixed(2)}%`;
+}
+
+function realRadarStatusLabel(status) {
+  const labels = {
+    PROFITABLE: "Lucrativa",
+    NEAR_OPPORTUNITY: "Pr\u00f3xima",
+    NORMAL: "Normal",
+  };
+
+  return labels[status] || status || "Indefinido";
+}
+
+function realRadarCell(row, value) {
+  const cell = document.createElement("td");
+  cell.textContent = value;
+  row.appendChild(cell);
+  return cell;
+}
+
+function renderRealOpportunityRadar(payload = {}) {
+  const priced = document.getElementById(
+    "real-radar-priced",
+  );
+  const profitable = document.getElementById(
+    "real-radar-profitable",
+  );
+  const near = document.getElementById(
+    "real-radar-near",
+  );
+  const status = document.getElementById(
+    "real-radar-status",
+  );
+  const body = document.getElementById(
+    "real-radar-body",
+  );
+
+  if (!priced || !profitable || !near || !status || !body) {
+    return;
+  }
+
+  priced.textContent = String(
+    payload.markets_priced || 0,
+  );
+  profitable.textContent = String(
+    payload.profitable_count || 0,
+  );
+  near.textContent = String(
+    payload.near_opportunity_count || 0,
+  );
+
+  body.replaceChildren();
+
+  const markets = Array.isArray(payload.best_markets)
+    ? payload.best_markets.slice(0, 20)
+    : [];
+
+  if (markets.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+
+    cell.colSpan = 7;
+    cell.textContent =
+      "Nenhum mercado precificado nesta atualiza??o.";
+
+    row.appendChild(cell);
+    body.appendChild(row);
+  }
+
+  for (const item of markets) {
+    const row = document.createElement("tr");
+
+    realRadarCell(
+      row,
+      String(item.connector_id || "?"),
+    );
+
+    const marketCell = document.createElement("td");
+    const sourceUrl = String(item.source_url || "");
+
+    if (sourceUrl) {
+      const link = document.createElement("a");
+
+      link.href = sourceUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = String(
+        item.title || item.market_id || "Mercado",
+      );
+
+      marketCell.appendChild(link);
+    } else {
+      marketCell.textContent = String(
+        item.title || item.market_id || "Mercado",
+      );
+    }
+
+    row.appendChild(marketCell);
+
+    realRadarCell(
+      row,
+      realRadarNumber(item.yes_ask),
+    );
+    realRadarCell(
+      row,
+      realRadarNumber(item.no_ask),
+    );
+    realRadarCell(
+      row,
+      realRadarNumber(item.total_cost),
+    );
+    realRadarCell(
+      row,
+      realRadarPercent(item.gross_edge),
+    );
+    realRadarCell(
+      row,
+      realRadarStatusLabel(item.status),
+    );
+
+    body.appendChild(row);
+  }
+
+  const profitableCount = Number(
+    payload.profitable_count || 0,
+  );
+
+  if (profitableCount > 0) {
+    status.textContent =
+      `${profitableCount} oportunidade(s) ` +
+      "lucrativa(s) detectada(s) ap\u00f3s o buffer de custos.";
+  } else {
+    status.textContent =
+      "Nenhuma arbitragem l\u00edquida neste momento. " +
+      `${payload.near_opportunity_count || 0} mercado(s) ` +
+      "est\u00e3o pr\u00f3ximos do ponto de arbitragem.";
+  }
+}
+
+async function refreshRealOpportunityRadar() {
+  if (realRadarState.loading) {
+    return;
+  }
+
+  const status = document.getElementById(
+    "real-radar-status",
+  );
+  const button = document.getElementById(
+    "real-radar-refresh",
+  );
+
+  realRadarState.loading = true;
+
+  if (button) {
+    button.disabled = true;
+  }
+
+  if (status) {
+    status.textContent =
+      "Atualizando pre\u00e7os reais...";
+  }
+
+  try {
+    const response = await fetch(
+      "/real-markets/radar/opportunities" +
+        "?limit_per_connector=40" +
+        "&fee_buffer=0.02" +
+        "&near_threshold=0.05",
+      {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Radar respondeu HTTP ${response.status}`,
+      );
+    }
+
+    const payload = await response.json();
+    renderRealOpportunityRadar(payload);
+  } catch (error) {
+    if (status) {
+      status.textContent =
+        "N\u00e3o foi poss\u00edvel atualizar o radar: " +
+        String(error?.message || error);
+    }
+  } finally {
+    realRadarState.loading = false;
+
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+function initializeRealOpportunityRadar() {
+  const button = document.getElementById(
+    "real-radar-refresh",
+  );
+
+  if (!button) {
+    return;
+  }
+
+  button.addEventListener(
+    "click",
+    refreshRealOpportunityRadar,
+  );
+
+  refreshRealOpportunityRadar();
+
+  realRadarState.timer = window.setInterval(
+    refreshRealOpportunityRadar,
+    60000,
+  );
+}
+
+initializeRealOpportunityRadar();
