@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     EXECUTION_WORKER_ENABLED: bool = True
     ROUTER_DASHBOARD_ENABLED: bool = True
 
+    # Fase 12A ? CORS p?blico restrito
+    PUBLIC_CORS_ENABLED: bool = False
+    PUBLIC_CORS_ALLOWED_ORIGINS: str = ""
+    PUBLIC_CORS_ALLOW_CREDENTIALS: bool = False
+
     # Fase 9F ? Shadow Runtime operacional
     SHADOW_RUNTIME_ENABLED: bool = True
     SHADOW_RUNTIME_SCHEDULER_ENABLED: bool = False
@@ -104,6 +109,40 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
+
+        self.PUBLIC_CORS_ALLOWED_ORIGINS = str(
+            self.PUBLIC_CORS_ALLOWED_ORIGINS or ""
+        ).strip()
+
+        cors_origins = [
+            origin.strip().rstrip("/")
+            for origin in self.PUBLIC_CORS_ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
+
+        if "*" in cors_origins:
+            raise ValueError(
+                "PUBLIC_CORS_ALLOWED_ORIGINS nao permite curinga."
+            )
+
+        if self.PUBLIC_CORS_ALLOW_CREDENTIALS:
+            raise ValueError(
+                "Credenciais CORS permanecem bloqueadas nesta fase."
+            )
+
+        if self.PUBLIC_CORS_ENABLED and not cors_origins:
+            raise ValueError(
+                "CORS habilitado exige ao menos uma origem autorizada."
+            )
+
+        for origin in cors_origins:
+            if not origin.startswith(("https://", "http://")):
+                raise ValueError(
+                    "Toda origem CORS deve usar http:// ou https://."
+                )
+
+        self.PUBLIC_CORS_ALLOWED_ORIGINS = ",".join(cors_origins)
+
         if not self.AI_ADVISORY_ONLY:
             raise ValueError("AI_ADVISORY_ONLY deve permanecer habilitado.")
         if self.AI_EXECUTION_AUTHORIZED:
