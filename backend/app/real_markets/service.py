@@ -12,6 +12,9 @@ from app.real_markets.connectors import (
 from app.real_markets.polymarket import (
     build_polymarket_connector_from_env,
 )
+from app.real_markets.kalshi import (
+    build_kalshi_connector_from_env,
+)
 from app.real_markets.models import (
     MarketSnapshot,
     NormalizedMarket,
@@ -457,6 +460,15 @@ _polymarket_connector = (
 if _polymarket_connector is not None:
     real_market_registry.register(
         _polymarket_connector
+    )
+
+_kalshi_connector = (
+    build_kalshi_connector_from_env()
+)
+
+if _kalshi_connector is not None:
+    real_market_registry.register(
+        _kalshi_connector
     )
 
 real_market_data_service = (

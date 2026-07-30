@@ -925,9 +925,12 @@ class MarketMatchingService:
         else:
             category_score = 0.0
 
+        minimum_title_score = 0.45
+
         hard_rejected = (
             same_connector
             or outcome_score < 0.5
+            or title_score < minimum_title_score
         )
 
         reasons: list[str] = []
@@ -940,6 +943,11 @@ class MarketMatchingService:
         if outcome_score < 0.5:
             reasons.append(
                 "OUTCOME_STRUCTURE_MISMATCH"
+            )
+
+        if title_score < minimum_title_score:
+            reasons.append(
+                "TITLE_SIMILARITY_TOO_LOW"
             )
 
         if (

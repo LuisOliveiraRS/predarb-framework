@@ -23,6 +23,7 @@
             <a class="nav-link active" href="#overview">Visão geral</a>
             <a class="nav-link" href="#markets-panel">Mercados</a>
             <a class="nav-link" href="#opportunities-panel">Oportunidades</a>
+        <a class="nav-link" href="#real-radar-panel">Radar Real</a>
             <a class="nav-link" href="#orders-panel">Ordens</a>
             <a class="nav-link" href="#positions-panel">Posições</a>
             <a class="nav-link" href="#paper-panel">Conta Paper</a>
@@ -228,7 +229,75 @@
             </div>
         </section>
 
-        <section id="markets-panel" class="panel table-panel">
+
+<section
+  id="real-radar-panel"
+  class="panel table-panel"
+  aria-labelledby="real-radar-title"
+>
+  <header class="panel-header">
+    <div>
+      <p class="eyebrow">
+        Dados p&uacute;blicos &middot; somente leitura
+      </p>
+      <h2 id="real-radar-title">
+        Radar de Oportunidades Reais
+      </h2>
+    </div>
+
+    <button
+      id="real-radar-refresh"
+      type="button"
+    >
+      Atualizar radar
+    </button>
+  </header>
+
+  <dl class="summary-list">
+    <div>
+      <dt>Mercados precificados</dt>
+      <dd id="real-radar-priced">0</dd>
+    </div>
+
+    <div>
+      <dt>Lucrativas ap&oacute;s custos</dt>
+      <dd id="real-radar-profitable">0</dd>
+    </div>
+
+    <div>
+      <dt>Pr&oacute;ximas da arbitragem</dt>
+      <dd id="real-radar-near">0</dd>
+    </div>
+  </dl>
+
+  <p
+    id="real-radar-status"
+    role="status"
+    aria-live="polite"
+  >
+    Carregando dados reais...
+  </p>
+
+  <div class="table-scroll">
+    <table class="opportunities-table">
+      <thead>
+        <tr>
+          <th>Plataforma</th>
+          <th>Mercado</th>
+          <th>YES</th>
+          <th>NO</th>
+          <th>Custo</th>
+          <th>Edge</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+
+      <tbody id="real-radar-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="markets-panel" class="panel table-panel">
             <div class="panel-heading">
                 <div>
                     <p class="eyebrow">Market data</p>
@@ -362,6 +431,6 @@
         routerWsPath: {{ router_ws_path | tojson }}
     };
 </script>
-<script type="module" src="/dashboard/static/js/dashboard.js"></script>
+<script type="module" src="/dashboard/static/js/dashboard.js?v=14-radar-ui-4"></script>
 </body>
 </html>
