@@ -22,6 +22,7 @@
         <nav class="nav-list">
             <a class="nav-link active" href="#overview">Visão geral</a>
             <a class="nav-link" href="#markets-panel">Mercados</a>
+            <a class="nav-link" href="#opportunities-panel">Oportunidades</a>
             <a class="nav-link" href="#orders-panel">Ordens</a>
             <a class="nav-link" href="#positions-panel">Posições</a>
             <a class="nav-link" href="#paper-panel">Conta Paper</a>
@@ -136,7 +137,7 @@
             </div>
         </section>
 
-        <section class="two-column-grid paper-tables">
+        <section class="two-column-grid paper-tables" data-dashboard-group="paper">
             <article class="panel table-panel">
                 <div class="panel-heading">
                     <div>
@@ -188,6 +189,43 @@
                     </table>
                 </div>
             </article>
+        </section>
+
+
+        <section
+            id="opportunities-panel"
+            class="panel table-panel"
+            aria-labelledby="opportunities-title"
+        >
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">Arbitragem identificada</p>
+                    <h2 id="opportunities-title">Oportunidades</h2>
+                </div>
+                <span
+                    id="opportunities-count"
+                    class="count-label"
+                >
+                    0 registros
+                </span>
+            </div>
+
+            <div class="table-wrap">
+                <table class="opportunities-table">
+                    <thead>
+                        <tr>
+                            <th>Mercado</th>
+                            <th>Compra YES</th>
+                            <th>Compra NO</th>
+                            <th>Custo</th>
+                            <th>Lucro</th>
+                            <th>ROI</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opportunities-body"></tbody>
+                </table>
+            </div>
         </section>
 
         <section id="markets-panel" class="panel table-panel">
