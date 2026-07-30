@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     HYPERLIQUID_MAX_RETRIES: int = 2
     HYPERLIQUID_RETRY_DELAY_SECONDS: float = 0.25
 
+    # Fase 10B ? execu??o isolada em testnet
+    HYPERLIQUID_TESTNET_API_URL: str = (
+        "https://api.hyperliquid-testnet.xyz"
+    )
+    HYPERLIQUID_TESTNET_EXECUTION_ENABLED: bool = False
+    HYPERLIQUID_TESTNET_EXECUTION_AUTHORIZED: bool = False
+    HYPERLIQUID_TESTNET_MAX_ORDER_NOTIONAL: float = 10.0
+
+    # Mainnet permanece permanentemente bloqueada nesta fase
+    HYPERLIQUID_MAINNET_EXECUTION_ENABLED: bool = False
+    HYPERLIQUID_MAINNET_EXECUTION_AUTHORIZED: bool = False
+
     # Paper Trading persistente — completamente isolado da execução live
     PAPER_ACCOUNT_ENABLED: bool = True
     PAPER_ACCOUNT_AUTO_LOAD: bool = True
@@ -111,6 +123,10 @@ class Settings(BaseSettings):
         self.AI_MODEL_ROOT = str(self.AI_MODEL_ROOT or "model_artifacts").strip()
         self.DATABASE_URL = str(self.DATABASE_URL or "").strip()
         self.HYPERLIQUID_API_URL = str(self.HYPERLIQUID_API_URL or "").strip()
+
+        self.HYPERLIQUID_TESTNET_API_URL = str(
+            self.HYPERLIQUID_TESTNET_API_URL or ""
+        ).strip().rstrip("/")
 
         if not self.PAPER_ACCOUNT_PATH:
             raise ValueError("PAPER_ACCOUNT_PATH não pode ser vazio.")
@@ -206,6 +222,37 @@ class Settings(BaseSettings):
                 "SHADOW_RUNTIME_PERSIST_AUDIT deve permanecer "
                 "desabilitado; persistencia exige acao explicita."
             )
+
+        official_testnet_url = "https://api.hyperliquid-testnet.xyz"
+
+        if self.HYPERLIQUID_MAINNET_EXECUTION_ENABLED:
+            raise ValueError(
+                "Execucao Hyperliquid mainnet deve permanecer desabilitada."
+            )
+
+        if self.HYPERLIQUID_MAINNET_EXECUTION_AUTHORIZED:
+            raise ValueError(
+                "Autorizacao Hyperliquid mainnet deve permanecer desabilitada."
+            )
+
+        if self.HYPERLIQUID_TESTNET_API_URL != official_testnet_url:
+            raise ValueError(
+                "HYPERLIQUID_TESTNET_API_URL deve apontar para a testnet oficial."
+            )
+
+        if (
+            self.HYPERLIQUID_TESTNET_EXECUTION_AUTHORIZED
+            and not self.HYPERLIQUID_TESTNET_EXECUTION_ENABLED
+        ):
+            raise ValueError(
+                "A autorizacao testnet exige que a execucao testnet esteja ativa."
+            )
+
+        if self.HYPERLIQUID_TESTNET_MAX_ORDER_NOTIONAL <= 0:
+            raise ValueError(
+                "HYPERLIQUID_TESTNET_MAX_ORDER_NOTIONAL deve ser positivo."
+            )
+
         if self.HYPERLIQUID_TIMEOUT_SECONDS <= 0:
             raise ValueError("HYPERLIQUID_TIMEOUT_SECONDS deve ser positivo.")
         if self.HYPERLIQUID_MAX_RETRIES < 0:
