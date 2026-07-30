@@ -1,0 +1,104 @@
+.mfa-card {
+    max-width: 580px;
+}
+
+.mfa-panel {
+    display: grid;
+    gap: 18px;
+}
+
+.mfa-panel[hidden] {
+    display: none;
+}
+
+.mfa-description,
+.mfa-manual p,
+.mfa-warning {
+    margin: 0;
+    color: var(--auth-muted, #aab3c4);
+    font-size: 0.94rem;
+    line-height: 1.55;
+}
+
+.mfa-qr-container {
+    display: flex;
+    justify-content: center;
+    padding: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    background: #ffffff;
+}
+
+.mfa-qr-image {
+    display: block;
+    width: min(260px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: contain;
+}
+
+.mfa-manual {
+    display: grid;
+    gap: 10px;
+}
+
+.mfa-secret-row {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+}
+
+.mfa-secret {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 14px;
+    overflow-wrap: anywhere;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+    font-size: 0.88rem;
+    letter-spacing: 0.06em;
+}
+
+.mfa-copy-button {
+    padding: 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    background: transparent;
+    color: #ffffff;
+    cursor: pointer;
+}
+
+.mfa-copy-button:hover {
+    border-color: rgba(255, 255, 255, 0.42);
+}
+
+#mfa-code {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: 0.32em;
+    text-align: center;
+}
+
+.mfa-warning {
+    padding: 12px 14px;
+    border-left: 3px solid #f4a340;
+    background: rgba(244, 163, 64, 0.08);
+}
+
+@media (max-width: 520px) {
+    .mfa-secret-row {
+        flex-direction: column;
+    }
+
+    .mfa-copy-button {
+        min-height: 44px;
+    }
+}
+
+.mfa-qr-container[hidden],
+.mfa-manual[hidden],
+.mfa-warning[hidden] {
+    display: none !important;
+}

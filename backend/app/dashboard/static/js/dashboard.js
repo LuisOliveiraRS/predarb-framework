@@ -1,3 +1,9 @@
+import {
+    ensureDashboardSession,
+} from "./session.js";
+
+await ensureDashboardSession();
+
 import { loadSnapshot } from "./api.js";
 import { renderRouterSummary } from "./charts.js";
 import { RouterSocket } from "./websocket.js";
@@ -36,6 +42,9 @@ function setConnectionStatus(status, detail = null) {
         reconnecting: "Reconectando WebSocket",
         disconnected: "WebSocket desconectado",
         error: "Erro no WebSocket",
+        "auth-refreshing": "Renovando sess?o",
+        "auth-restored": "Sess?o renovada",
+        "auth-required": "Autentica??o necess?ria",
         "invalid-message": "Mensagem WebSocket inválida",
     };
 

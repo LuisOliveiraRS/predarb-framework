@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+    <meta
+        name="robots"
+        content="noindex,nofollow"
+    >
+    <title>Entrar | {{ app_name }}</title>
+
+    <link
+        rel="stylesheet"
+        href="/dashboard/static/css/auth.css"
+    >
+</head>
+
+<body class="auth-page">
+    <main class="auth-layout">
+        <section
+            class="auth-card"
+            aria-labelledby="login-title"
+        >
+            <header class="auth-brand">
+                <div
+                    class="auth-logo"
+                    aria-hidden="true"
+                >
+                    PA
+                </div>
+
+                <div>
+                    <span class="auth-product">
+                        PredArb
+                    </span>
+
+                    <span class="auth-subtitle">
+                        Mercado preditivo em tempo real
+                    </span>
+                </div>
+            </header>
+
+            <div class="auth-heading">
+                <p class="auth-eyebrow">
+                    ?rea protegida
+                </p>
+
+                <h1 id="login-title">
+                    Acesse sua conta
+                </h1>
+
+                <p>
+                    Entre com o usu?rio administrativo
+                    cadastrado no Supabase.
+                </p>
+            </div>
+
+            <form
+                id="login-form"
+                class="auth-form"
+                novalidate
+            >
+                <label for="login-email">
+                    E-mail
+                </label>
+
+                <input
+                    id="login-email"
+                    name="email"
+                    type="email"
+                    autocomplete="username"
+                    maxlength="320"
+                    required
+                >
+
+                <label for="login-password">
+                    Senha
+                </label>
+
+                <div class="password-field">
+                    <input
+                        id="login-password"
+                        name="password"
+                        type="password"
+                        autocomplete="current-password"
+                        minlength="8"
+                        maxlength="1024"
+                        required
+                    >
+
+                    <button
+                        id="toggle-password"
+                        class="password-toggle"
+                        type="button"
+                        aria-label="Mostrar senha"
+                    >
+                        Mostrar
+                    </button>
+                </div>
+
+                <p class="auth-form-link">
+                    <a href="/esqueci-senha">
+                        Esqueci minha senha
+                    </a>
+                </p>
+
+                <p
+                    id="login-message"
+                    class="auth-message"
+                    role="alert"
+                    aria-live="polite"
+                ></p>
+
+                <button
+                    id="login-submit"
+                    class="auth-submit"
+                    type="submit"
+                >
+                    Entrar no PredArb
+                </button>
+            </form>
+
+            <footer class="auth-security">
+                <span aria-hidden="true">??</span>
+
+                <span>
+                    Sess?o protegida por cookies HttpOnly.
+                    Senhas e tokens n?o s?o gravados
+                    pelo dashboard.
+                </span>
+            </footer>
+        </section>
+    </main>
+
+    <script
+        type="module"
+        src="/dashboard/static/js/auth.js"
+    ></script>
+</body>
+</html>

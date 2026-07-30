@@ -75,6 +75,9 @@ from app.api.routers.statistics import router as statistics_router
 from app.connectors.hyperliquid.connector import HyperliquidConnector
 from app.connectors.manager.connector_manager import connector_manager
 from app.connectors.mock.connector import MockConnector
+from app.auth.router import router as auth_router
+from app.auth.password_recovery import router as password_recovery_router
+from app.auth.mfa_router import router as mfa_router
 from app.core.settings import settings
 from app.dashboard.api import router as dashboard_api_router
 from app.dashboard.event_listener import dashboard_event_listener
@@ -529,6 +532,9 @@ def create_app() -> FastAPI:
         paper_performance_router,
         paper_performance_dashboard_router,
         websocket_router,
+        auth_router,
+        password_recovery_router,
+        mfa_router,
         dashboard_page_router,
         dashboard_api_router,
         ai_dashboard_api_router,

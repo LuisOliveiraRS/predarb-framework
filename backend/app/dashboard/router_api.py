@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.auth.dependencies import require_dashboard_user
 
 from app.dashboard.router_cache import router_cache
 from app.dashboard.router_dashboard import router_dashboard
@@ -10,6 +12,7 @@ from app.dashboard.router_service import router_service
 
 
 router = APIRouter(
+    dependencies=[Depends(require_dashboard_user)],
     prefix="/router",
     tags=["AI Router Dashboard"],
 )

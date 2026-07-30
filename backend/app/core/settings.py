@@ -11,6 +11,25 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
 
+    # Fase 13B - autenticacao Supabase
+    AUTH_ENABLED: bool = False
+    AUTH_REQUIRED_FOR_DASHBOARD: bool = False
+    AUTH_REQUIRE_MFA_FOR_OPERATIONS: bool = True
+
+    AUTH_ACCESS_COOKIE_NAME: str = "predarb_access_token"
+    AUTH_REFRESH_COOKIE_NAME: str = "predarb_refresh_token"
+    AUTH_COOKIE_SECURE: bool = True
+    AUTH_COOKIE_SAMESITE: str = "strict"
+    AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS: int = 2592000
+    AUTH_LOGIN_PATH: str = "/login"
+    AUTH_AFTER_LOGIN_PATH: str = "/dashboard"
+
+    SUPABASE_URL: str = ""
+    SUPABASE_PUBLISHABLE_KEY: str = ""
+    SUPABASE_JWT_AUDIENCE: str = "authenticated"
+    SUPABASE_JWT_ALGORITHMS: str = "ES256,RS256"
+    SUPABASE_JWKS_CACHE_TTL_SECONDS: int = 600
+
     # Banco de dados
     DATABASE_URL: str = "sqlite:///predarb.db"
     DATABASE_ECHO: bool = False
@@ -109,6 +128,189 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
+
+        self.SUPABASE_URL = str(
+            self.SUPABASE_URL or ""
+        ).strip().rstrip("/")
+
+        self.SUPABASE_PUBLISHABLE_KEY = str(
+            self.SUPABASE_PUBLISHABLE_KEY or ""
+        ).strip()
+
+        self.SUPABASE_JWT_AUDIENCE = str(
+            self.SUPABASE_JWT_AUDIENCE or ""
+        ).strip()
+
+        jwt_algorithms = [
+            algorithm.strip()
+            for algorithm in str(
+                self.SUPABASE_JWT_ALGORITHMS or ""
+            ).split(",")
+            if algorithm.strip()
+        ]
+
+        allowed_algorithms = {
+            "ES256",
+            "RS256",
+            "EdDSA",
+        }
+
+        unsupported_algorithms = sorted(
+            set(jwt_algorithms) - allowed_algorithms
+        )
+
+        if not jwt_algorithms:
+            raise ValueError(
+                "SUPABASE_JWT_ALGORITHMS nao pode ficar vazio."
+            )
+
+        if unsupported_algorithms:
+            raise ValueError(
+                "Algoritmos JWT nao autorizados: "
+                + ", ".join(unsupported_algorithms)
+            )
+
+        self.SUPABASE_JWT_ALGORITHMS = ",".join(
+            jwt_algorithms
+        )
+
+        self.AUTH_ACCESS_COOKIE_NAME = str(
+            self.AUTH_ACCESS_COOKIE_NAME or ""
+        ).strip()
+
+        self.AUTH_REFRESH_COOKIE_NAME = str(
+            self.AUTH_REFRESH_COOKIE_NAME or ""
+        ).strip()
+
+        self.AUTH_COOKIE_SAMESITE = str(
+            self.AUTH_COOKIE_SAMESITE or ""
+        ).strip().lower()
+
+        for cookie_name in (
+            self.AUTH_ACCESS_COOKIE_NAME,
+            self.AUTH_REFRESH_COOKIE_NAME,
+        ):
+            invalid_cookie_name = (
+                not cookie_name
+                or any(
+                    character.isspace()
+                    or character in ";,"
+                    for character in cookie_name
+                )
+            )
+
+            if invalid_cookie_name:
+                raise ValueError(
+                    "Nomes dos cookies Auth sao invalidos."
+                )
+
+        if (
+            self.AUTH_ACCESS_COOKIE_NAME
+            == self.AUTH_REFRESH_COOKIE_NAME
+        ):
+            raise ValueError(
+                "Os cookies de acesso e renovacao "
+                "devem possuir nomes diferentes."
+            )
+
+        if self.AUTH_COOKIE_SAMESITE not in {
+            "strict",
+            "lax",
+        }:
+            raise ValueError(
+                "AUTH_COOKIE_SAMESITE deve ser strict ou lax."
+            )
+
+        if not (
+            3600
+            <= self.AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS
+            <= 7776000
+        ):
+            raise ValueError(
+                "AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS "
+                "deve ficar entre 3600 e 7776000."
+            )
+
+        self.AUTH_LOGIN_PATH = str(
+            self.AUTH_LOGIN_PATH or ""
+        ).strip()
+
+        self.AUTH_AFTER_LOGIN_PATH = str(
+            self.AUTH_AFTER_LOGIN_PATH or ""
+        ).strip()
+
+        for auth_path in (
+            self.AUTH_LOGIN_PATH,
+            self.AUTH_AFTER_LOGIN_PATH,
+        ):
+            if (
+                not auth_path.startswith("/")
+                or auth_path.startswith("//")
+                or "://" in auth_path
+            ):
+                raise ValueError(
+                    "AUTH_LOGIN_PATH e AUTH_AFTER_LOGIN_PATH "
+                    "devem ser caminhos locais."
+                )
+
+        if (
+            self.AUTH_ENABLED
+            and not self.DEBUG
+            and not self.AUTH_COOKIE_SECURE
+        ):
+            raise ValueError(
+                "Cookies Auth devem usar Secure em producao."
+            )
+
+        if not (
+            60
+            <= self.SUPABASE_JWKS_CACHE_TTL_SECONDS
+            <= 600
+        ):
+            raise ValueError(
+                "SUPABASE_JWKS_CACHE_TTL_SECONDS "
+                "deve ficar entre 60 e 600."
+            )
+
+        if (
+            self.AUTH_REQUIRED_FOR_DASHBOARD
+            and not self.AUTH_ENABLED
+        ):
+            raise ValueError(
+                "AUTH_REQUIRED_FOR_DASHBOARD exige AUTH_ENABLED."
+            )
+
+        if self.AUTH_ENABLED:
+            if not self.SUPABASE_URL:
+                raise ValueError(
+                    "AUTH_ENABLED exige SUPABASE_URL."
+                )
+
+            if not self.SUPABASE_PUBLISHABLE_KEY:
+                raise ValueError(
+                    "AUTH_ENABLED exige "
+                    "SUPABASE_PUBLISHABLE_KEY."
+                )
+
+            if not self.SUPABASE_JWT_AUDIENCE:
+                raise ValueError(
+                    "SUPABASE_JWT_AUDIENCE nao pode ficar vazio."
+                )
+
+            if self.DEBUG:
+                valid_url = self.SUPABASE_URL.startswith(
+                    ("https://", "http://")
+                )
+            else:
+                valid_url = self.SUPABASE_URL.startswith(
+                    "https://"
+                )
+
+            if not valid_url:
+                raise ValueError(
+                    "SUPABASE_URL deve utilizar HTTPS "
+                    "fora do ambiente DEBUG."
+                )
 
         self.PUBLIC_CORS_ALLOWED_ORIGINS = str(
             self.PUBLIC_CORS_ALLOWED_ORIGINS or ""
