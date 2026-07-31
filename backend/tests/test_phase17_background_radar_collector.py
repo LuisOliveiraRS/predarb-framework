@@ -137,14 +137,17 @@ def test_snapshot_starts_in_warming_up():
 class FakeScanService:
     def __init__(self):
         self.calls = 0
+        self.bypass_cooldown = None
 
     async def scan(
         self,
         configuration,
         *,
         force_refresh,
+        bypass_cooldown=False,
     ):
         self.calls += 1
+        self.bypass_cooldown = bypass_cooldown
 
         return {
             "status": "READY",
@@ -178,6 +181,25 @@ def test_background_collector_runs_cycle():
     assert result["last_markets_priced"] == 3
     assert result["read_only"] is True
     assert result["financial_execution"] is False
+
+
+def test_background_collector_bypasses_cooldown():
+    """
+    O cooldown protege os provedores upstream de
+    chamadas externas. O coletor automatico ja e
+    limitado pelo proprio intervalo do scheduler.
+    """
+
+    service = FakeScanService()
+
+    collector = RealOpportunityBackgroundCollector(
+        scan_service=service,
+        enabled=True,
+    )
+
+    asyncio.run(collector.run_cycle())
+
+    assert service.bypass_cooldown is True
 
 
 def test_background_collector_disabled():

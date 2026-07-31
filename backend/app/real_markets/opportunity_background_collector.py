@@ -125,6 +125,7 @@ class RealOpportunityBackgroundCollector:
             payload = await self.scan_service.scan(
                 self.configuration(),
                 force_refresh=True,
+                bypass_cooldown=True,
             )
 
             with self._state_lock:

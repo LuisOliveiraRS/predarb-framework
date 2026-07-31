@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     REAL_OPPORTUNITY_BACKGROUND_NEAR_THRESHOLD: float = 0.05
     REAL_OPPORTUNITY_BACKGROUND_CONCURRENCY: int = 8
     REAL_OPPORTUNITY_SNAPSHOT_MAX_AGE_MULTIPLIER: int = 3
+    REAL_OPPORTUNITY_FORCE_REFRESH_COOLDOWN_SECONDS: int = 30
 
     # Ciclo de vida operacional
     MOCK_CONNECTOR_ENABLED: bool = True
@@ -548,6 +549,19 @@ class Settings(BaseSettings):
             raise ValueError(
                 "REAL_OPPORTUNITY_SNAPSHOT_MAX_AGE_MULTIPLIER "
                 "deve ficar entre 1 e 10."
+            )
+
+        if not (
+            0
+            <= int(
+                self
+                .REAL_OPPORTUNITY_FORCE_REFRESH_COOLDOWN_SECONDS
+            )
+            <= 3600
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_FORCE_REFRESH_COOLDOWN_SECONDS "
+                "deve ficar entre 0 e 3600 segundos."
             )
 
         if (

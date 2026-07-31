@@ -1,6 +1,10 @@
 from fastapi import APIRouter
+from fastapi import Depends
 from fastapi import Query
 
+from app.auth.dependencies import (
+    require_dashboard_user,
+)
 from app.real_markets.opportunity_background_collector import (
     real_opportunity_background_collector,
 )
@@ -30,7 +34,12 @@ def _configuration(
     )
 
 
-@router.get("/opportunities")
+@router.get(
+    "/opportunities",
+    dependencies=[
+        Depends(require_dashboard_user),
+    ],
+)
 async def radar_opportunities(
     limit_per_connector: int = Query(
         40,

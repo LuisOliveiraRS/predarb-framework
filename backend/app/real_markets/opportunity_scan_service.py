@@ -69,6 +69,11 @@ class RealOpportunityScanService:
             Future,
         ] = {}
 
+        self._last_forced_at: dict[
+            ConfigurationKey,
+            float,
+        ] = {}
+
         self._cache_generation = 0
         self._state_lock = RLock()
 
@@ -252,11 +257,80 @@ class RealOpportunityScanService:
             "order_submission_available": False,
         }
 
+    @staticmethod
+    def _force_refresh_cooldown_seconds() -> float:
+        return max(
+            0.0,
+            float(
+                settings
+                .REAL_OPPORTUNITY_FORCE_REFRESH_COOLDOWN_SECONDS
+            ),
+        )
+
+    def _force_refresh_retry_after_locked(
+        self,
+        key: ConfigurationKey,
+        *,
+        now: float,
+    ) -> float:
+        """
+        Segundos restantes ate liberar nova coleta forcada.
+
+        Zero significa liberado. O cooldown protege os
+        provedores upstream de coletas encadeadas vindas
+        de fora do coletor automatico.
+        """
+
+        cooldown = self._force_refresh_cooldown_seconds()
+
+        if cooldown <= 0.0:
+            return 0.0
+
+        last_forced_at = self._last_forced_at.get(key)
+
+        if last_forced_at is None:
+            return 0.0
+
+        elapsed = max(
+            0.0,
+            now - last_forced_at,
+        )
+
+        return max(
+            0.0,
+            cooldown - elapsed,
+        )
+
+    @staticmethod
+    def _annotate_force_refresh(
+        payload: dict[str, Any],
+        *,
+        requested: bool,
+        applied: bool,
+        retry_after: float,
+    ) -> dict[str, Any]:
+        monitoring = dict(
+            payload.get("monitoring") or {}
+        )
+
+        monitoring.update({
+            "force_refresh_requested": requested,
+            "force_refresh_applied": applied,
+            "force_refresh_retry_after_seconds": round(
+                retry_after,
+                3,
+            ),
+        })
+
+        payload["monitoring"] = monitoring
+        return payload
+
     def scan(
         self,
         configuration: RadarConfiguration | None = None,
         *,
         force_refresh: bool = False,
+        bypass_cooldown: bool = False,
     ) -> Any:
         """
         Cria a requisicao de coleta.
@@ -265,12 +339,19 @@ class RealOpportunityScanService:
         antes da criacao ou execucao do event loop.
         Isso permite agrupar force refresh iniciados
         simultaneamente em threads diferentes.
+
+        Um force refresh vindo de fora do coletor
+        automatico respeita o cooldown configurado: se
+        ainda nao houver liberacao, a coleta e rebaixada
+        para leitura de cache em vez de atingir os
+        provedores upstream.
         """
 
         config = configuration or RadarConfiguration()
         key = self._configuration_key(config)
 
         with self._state_lock:
+            now = self.clock()
             existing_entry = self._cache.get(key)
 
             starting_generation = (
@@ -279,11 +360,55 @@ class RealOpportunityScanService:
                 else 0
             )
 
-        return self._execute_scan(
+            retry_after = 0.0
+
+            if force_refresh and not bypass_cooldown:
+                retry_after = (
+                    self._force_refresh_retry_after_locked(
+                        key,
+                        now=now,
+                    )
+                )
+
+            effective_force_refresh = (
+                force_refresh
+                and retry_after <= 0.0
+            )
+
+            if effective_force_refresh:
+                self._last_forced_at[key] = now
+
+        return self._scan_with_policy(
+            config,
+            key,
+            force_refresh=effective_force_refresh,
+            starting_generation=starting_generation,
+            requested=force_refresh,
+            retry_after=retry_after,
+        )
+
+    async def _scan_with_policy(
+        self,
+        config: RadarConfiguration,
+        key: ConfigurationKey,
+        *,
+        force_refresh: bool,
+        starting_generation: int,
+        requested: bool,
+        retry_after: float,
+    ) -> dict[str, Any]:
+        payload = await self._execute_scan(
             config,
             key,
             force_refresh=force_refresh,
             starting_generation=starting_generation,
+        )
+
+        return self._annotate_force_refresh(
+            payload,
+            requested=requested,
+            applied=force_refresh,
+            retry_after=retry_after,
         )
 
     async def _execute_scan(
@@ -534,6 +659,7 @@ class RealOpportunityScanService:
         with self._state_lock:
             self._cache.clear()
             self._latest_entry = None
+            self._last_forced_at.clear()
 
 
 real_opportunity_scan_service = (
