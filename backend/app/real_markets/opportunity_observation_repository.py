@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 from app.database.models.real_market_observation_model import (
     RealMarketObservationModel,
 )
-from app.database.session import SessionLocal
+from app.real_markets.opportunity_database import (
+    real_opportunity_session_factory,
+)
 
 
 class RealOpportunityObservationRepository:
@@ -21,7 +23,9 @@ class RealOpportunityObservationRepository:
     def __init__(
         self,
         *,
-        session_factory: Callable[[], Session] = SessionLocal,
+        session_factory: Callable[[], Session] | None = (
+            real_opportunity_session_factory
+        ),
     ) -> None:
         self.session_factory = session_factory
 
@@ -107,8 +111,6 @@ class RealOpportunityObservationRepository:
         *,
         observed_at: datetime | str,
     ) -> dict[str, Any]:
-        timestamp = self._datetime(observed_at)
-
         valid_items = [
             item
             for item in observations
@@ -121,11 +123,25 @@ class RealOpportunityObservationRepository:
             ).strip()
         ]
 
+        if self.session_factory is None:
+            return {
+                "status": "DEGRADED",
+                "attempted": len(valid_items),
+                "inserted": 0,
+                "skipped": 0,
+                "persisted": False,
+                "error": "PersistenceNotConfigured",
+                **self._safety_flags(),
+            }
+
+        timestamp = self._datetime(observed_at)
         inserted = 0
         skipped = 0
-        session = self.session_factory()
+        session: Session | None = None
 
         try:
+            session = self.session_factory()
+
             for item in valid_items:
                 connector_id = str(
                     item.get("connector_id")
@@ -209,7 +225,8 @@ class RealOpportunityObservationRepository:
             }
 
         except SQLAlchemyError as exc:
-            session.rollback()
+            if session is not None:
+                session.rollback()
 
             return {
                 "status": "DEGRADED",
@@ -222,7 +239,8 @@ class RealOpportunityObservationRepository:
             }
 
         finally:
-            session.close()
+            if session is not None:
+                session.close()
 
     def load_histories(
         self,
@@ -245,10 +263,28 @@ class RealOpportunityObservationRepository:
             and str(market_id).strip()
         ))
 
-        histories: dict[str, list[dict[str, Any]]] = {}
-        session = self.session_factory()
+        if self.session_factory is None:
+            return {
+                "histories": {},
+                "markets_requested": len(
+                    normalized_keys
+                ),
+                "markets_loaded": 0,
+                "persistence_available": False,
+                "error": "PersistenceNotConfigured",
+                **self._safety_flags(),
+            }
+
+        histories: dict[
+            str,
+            list[dict[str, Any]],
+        ] = {}
+
+        session: Session | None = None
 
         try:
+            session = self.session_factory()
+
             for connector_id, market_id in normalized_keys:
                 rows = (
                     session.query(
@@ -279,7 +315,9 @@ class RealOpportunityObservationRepository:
 
             return {
                 "histories": histories,
-                "markets_requested": len(normalized_keys),
+                "markets_requested": len(
+                    normalized_keys
+                ),
                 "markets_loaded": sum(
                     1
                     for points in histories.values()
@@ -291,11 +329,14 @@ class RealOpportunityObservationRepository:
             }
 
         except SQLAlchemyError as exc:
-            session.rollback()
+            if session is not None:
+                session.rollback()
 
             return {
                 "histories": {},
-                "markets_requested": len(normalized_keys),
+                "markets_requested": len(
+                    normalized_keys
+                ),
                 "markets_loaded": 0,
                 "persistence_available": False,
                 "error": type(exc).__name__,
@@ -303,7 +344,8 @@ class RealOpportunityObservationRepository:
             }
 
         finally:
-            session.close()
+            if session is not None:
+                session.close()
 
     def load_history(
         self,
@@ -313,12 +355,7 @@ class RealOpportunityObservationRepository:
         limit: int = 60,
     ) -> dict[str, Any]:
         result = self.load_histories(
-            [
-                (
-                    connector_id,
-                    market_id,
-                )
-            ],
+            [(connector_id, market_id)],
             limit_per_market=limit,
         )
 

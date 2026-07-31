@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # Fase 16 - cache de coletas reais
     REAL_OPPORTUNITY_CACHE_TTL_SECONDS: float = 45.0
     REAL_OPPORTUNITY_PERSISTENCE_ENABLED: bool = False
+    REAL_OPPORTUNITY_DATABASE_URL: str = ""
     REAL_OPPORTUNITY_PERSISTENCE_HISTORY_LIMIT: int = 60
 
     # Ciclo de vida operacional
@@ -431,6 +432,35 @@ class Settings(BaseSettings):
             raise ValueError(
                 "REAL_OPPORTUNITY_CACHE_TTL_SECONDS "
                 "deve ficar entre 5 e 300 segundos."
+            )
+
+        self.REAL_OPPORTUNITY_DATABASE_URL = str(
+            self.REAL_OPPORTUNITY_DATABASE_URL or ""
+        ).strip()
+
+        if (
+            self.REAL_OPPORTUNITY_PERSISTENCE_ENABLED
+            and not self.REAL_OPPORTUNITY_DATABASE_URL
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_PERSISTENCE_ENABLED "
+                "exige REAL_OPPORTUNITY_DATABASE_URL."
+            )
+
+        if (
+            self.REAL_OPPORTUNITY_DATABASE_URL
+            and not self.REAL_OPPORTUNITY_DATABASE_URL.startswith(
+                (
+                    "sqlite://",
+                    "postgres://",
+                    "postgresql://",
+                    "postgresql+psycopg://",
+                )
+            )
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_DATABASE_URL possui "
+                "um protocolo nao autorizado."
             )
 
         if not (
