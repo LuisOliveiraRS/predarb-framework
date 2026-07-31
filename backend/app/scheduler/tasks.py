@@ -16,6 +16,9 @@ from app.core.settings import settings
 from app.paper.shadow_execution_runtime import (
     shadow_execution_runtime,
 )
+from app.real_markets.opportunity_background_collector import (
+    real_opportunity_background_collector,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -232,3 +235,26 @@ def shadow_runtime_task() -> dict[str, Any]:
         )
 
         raise
+
+
+def real_opportunity_background_task(
+) -> dict[str, Any]:
+    """Executa um ciclo automatico do Radar Real."""
+
+    logger.info(
+        "Iniciando coleta automatica do Radar Real."
+    )
+
+    result = (
+        real_opportunity_background_collector
+        .run_task()
+    )
+
+    logger.info(
+        "Coleta automatica concluida: "
+        "status=%s; markets=%s.",
+        result.get("status"),
+        result.get("last_markets_priced", 0),
+    )
+
+    return result

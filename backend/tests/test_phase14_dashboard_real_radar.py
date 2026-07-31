@@ -23,7 +23,7 @@ def test_dashboard_contains_real_radar_panel():
 
 def test_dashboard_fetches_real_radar_endpoint():
     assert (
-        "/real-markets/radar/opportunities"
+        "/real-markets/radar/snapshot"
         in JS
     )
     assert "refreshRealOpportunityRadar" in JS

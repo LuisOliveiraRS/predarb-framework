@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     REAL_OPPORTUNITY_DATABASE_URL: str = ""
     REAL_OPPORTUNITY_PERSISTENCE_HISTORY_LIMIT: int = 60
 
+    # Fase 17 - coletor automatico do Radar Real
+    REAL_OPPORTUNITY_BACKGROUND_COLLECTOR_ENABLED: bool = False
+    REAL_OPPORTUNITY_BACKGROUND_INTERVAL_SECONDS: int = 60
+    REAL_OPPORTUNITY_BACKGROUND_LIMIT_PER_CONNECTOR: int = 20
+    REAL_OPPORTUNITY_BACKGROUND_FEE_BUFFER: float = 0.02
+    REAL_OPPORTUNITY_BACKGROUND_NEAR_THRESHOLD: float = 0.05
+    REAL_OPPORTUNITY_BACKGROUND_CONCURRENCY: int = 8
+    REAL_OPPORTUNITY_SNAPSHOT_MAX_AGE_MULTIPLIER: int = 3
+
     # Ciclo de vida operacional
     MOCK_CONNECTOR_ENABLED: bool = True
     HYPERLIQUID_CONNECTOR_ENABLED: bool = True
@@ -482,6 +491,74 @@ class Settings(BaseSettings):
             raise ValueError(
                 "HYPERLIQUID_API_URL é obrigatório quando o conector está ativo."
             )
+        if not (
+            30
+            <= int(
+                self.REAL_OPPORTUNITY_BACKGROUND_INTERVAL_SECONDS
+            )
+            <= 3600
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_BACKGROUND_INTERVAL_SECONDS "
+                "deve ficar entre 30 e 3600 segundos."
+            )
+
+        if not (
+            1
+            <= int(
+                self.REAL_OPPORTUNITY_BACKGROUND_LIMIT_PER_CONNECTOR
+            )
+            <= 100
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_BACKGROUND_LIMIT_PER_CONNECTOR "
+                "deve ficar entre 1 e 100."
+            )
+
+        for field_name in (
+            "REAL_OPPORTUNITY_BACKGROUND_FEE_BUFFER",
+            "REAL_OPPORTUNITY_BACKGROUND_NEAR_THRESHOLD",
+        ):
+            value = float(getattr(self, field_name))
+
+            if not 0.0 <= value <= 0.25:
+                raise ValueError(
+                    f"{field_name} deve ficar entre 0 e 0.25."
+                )
+
+        if not (
+            1
+            <= int(
+                self.REAL_OPPORTUNITY_BACKGROUND_CONCURRENCY
+            )
+            <= 20
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_BACKGROUND_CONCURRENCY "
+                "deve ficar entre 1 e 20."
+            )
+
+        if not (
+            1
+            <= int(
+                self.REAL_OPPORTUNITY_SNAPSHOT_MAX_AGE_MULTIPLIER
+            )
+            <= 10
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_SNAPSHOT_MAX_AGE_MULTIPLIER "
+                "deve ficar entre 1 e 10."
+            )
+
+        if (
+            self.REAL_OPPORTUNITY_BACKGROUND_COLLECTOR_ENABLED
+            and not self.SCHEDULER_ENABLED
+        ):
+            raise ValueError(
+                "O coletor automatico do Radar exige "
+                "SCHEDULER_ENABLED."
+            )
+
         if self.MARKET_UPDATE_INTERVAL_SECONDS <= 0:
             raise ValueError("MARKET_UPDATE_INTERVAL_SECONDS deve ser positivo.")
 

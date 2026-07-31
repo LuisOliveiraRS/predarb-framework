@@ -1060,16 +1060,76 @@ function renderRealOpportunityRadar(payload = {}) {
     payload.profitable_count || 0,
   );
 
+  let summary;
+
   if (profitableCount > 0) {
-    status.textContent =
+    summary =
       `${profitableCount} oportunidade(s) ` +
       "lucrativa(s) detectada(s) ap\u00f3s o buffer de custos.";
   } else {
-    status.textContent =
+    summary =
       "Nenhuma arbitragem l\u00edquida neste momento. " +
       `${payload.near_opportunity_count || 0} mercado(s) ` +
       "est\u00e3o pr\u00f3ximos do ponto de arbitragem.";
   }
+
+  const warnings = realRadarSnapshotWarnings(monitoring);
+
+  if (warnings.length > 0) {
+    status.textContent =
+      `\u26a0 ${warnings.join(" ")} ${summary}`;
+  } else {
+    status.textContent = summary;
+  }
+}
+
+function realRadarSeconds(value) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return "?";
+  }
+
+  return `${Math.round(parsed)}s`;
+}
+
+function realRadarSnapshotWarnings(monitoring = {}) {
+  const warnings = [];
+
+  if (monitoring.snapshot_available === false) {
+    warnings.push(
+      "Snapshot ainda indispon\u00edvel: " +
+        "aguardando o primeiro ciclo do coletor.",
+    );
+
+    return warnings;
+  }
+
+  if (monitoring.snapshot_is_stale === true) {
+    warnings.push(
+      "Snapshot desatualizado (" +
+        realRadarSeconds(
+          monitoring.snapshot_age_seconds,
+        ) +
+        " de idade, limite " +
+        realRadarSeconds(
+          monitoring.snapshot_max_age_seconds,
+        ) +
+        "). O coletor pode estar parado; " +
+        "os dados abaixo podem n\u00e3o refletir o mercado atual.",
+    );
+  }
+
+  if (
+    monitoring.snapshot_configuration_match === false
+  ) {
+    warnings.push(
+      "Snapshot coletado com configura\u00e7\u00e3o " +
+        "diferente da solicitada.",
+    );
+  }
+
+  return warnings;
 }
 
 async function refreshRealOpportunityRadar() {
@@ -1097,10 +1157,7 @@ async function refreshRealOpportunityRadar() {
 
   try {
     const response = await fetch(
-      "/real-markets/radar/opportunities" +
-        "?limit_per_connector=40" +
-        "&fee_buffer=0.02" +
-        "&near_threshold=0.05",
+      "/real-markets/radar/snapshot",
       {
         method: "GET",
         credentials: "same-origin",
