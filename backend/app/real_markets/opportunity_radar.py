@@ -21,7 +21,7 @@ class RadarConfiguration:
 
 
 class RealOpportunityRadar:
-    """Radar somente leitura de inefici?ncias YES + NO."""
+    """Radar somente leitura de ineficiencias YES + NO."""
 
     def __init__(
         self,
@@ -210,6 +210,7 @@ class RealOpportunityRadar:
             "profitable": profitable,
             "near_opportunities": near[:30],
             "best_markets": all_results[:30],
+            "monitoring_markets": all_results,
             "configuration": {
                 "limit_per_connector": limit,
                 "fee_buffer": fee_buffer,

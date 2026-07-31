@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Query
 
+from app.real_markets.opportunity_monitor import (
+    real_opportunity_monitor,
+)
 from app.real_markets.opportunity_radar import (
     RadarConfiguration,
-    real_opportunity_radar,
 )
 
 
@@ -30,10 +32,35 @@ async def radar_opportunities(
         le=0.25,
     ),
 ):
-    return await real_opportunity_radar.scan(
+    return await real_opportunity_monitor.scan(
         RadarConfiguration(
             limit_per_connector=limit_per_connector,
             fee_buffer=fee_buffer,
             near_threshold=near_threshold,
         )
+    )
+
+
+@router.get("/history")
+async def radar_market_history(
+    connector_id: str = Query(
+        ...,
+        min_length=1,
+        max_length=120,
+    ),
+    market_id: str = Query(
+        ...,
+        min_length=1,
+        max_length=500,
+    ),
+    limit: int = Query(
+        60,
+        ge=1,
+        le=1440,
+    ),
+):
+    return await real_opportunity_monitor.get_history(
+        connector_id,
+        market_id,
+        limit=limit,
     )

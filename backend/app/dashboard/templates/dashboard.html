@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark">
     <meta name="robots" content="noindex,nofollow">
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/dashboard/static/css/dashboard.css">
+    <link rel="stylesheet" href="/dashboard/static/css/dashboard.css?v=15-monitoring-1">
 </head>
 <body class="auth-pending">
 <div class="app-shell">
@@ -269,6 +269,38 @@
       <dd id="real-radar-near">0</dd>
     </div>
   </dl>
+  <div
+    class="real-radar-monitoring-grid"
+    aria-label="Monitoramento das oportunidades"
+  >
+    <article class="real-radar-monitoring-card">
+      <span>Novos mercados</span>
+      <strong id="real-radar-new">0</strong>
+    </article>
+
+    <article class="real-radar-monitoring-card">
+      <span>Edge melhorando</span>
+      <strong id="real-radar-improving">0</strong>
+    </article>
+
+    <article class="real-radar-monitoring-card">
+      <span>Edge piorando</span>
+      <strong id="real-radar-worsening">0</strong>
+    </article>
+
+    <article class="real-radar-monitoring-card">
+      <span>Pontos no hist&oacute;rico</span>
+      <strong id="real-radar-history-points">0</strong>
+    </article>
+  </div>
+
+  <div
+    id="real-radar-alerts"
+    class="real-radar-alerts"
+    role="alert"
+    hidden
+  ></div>
+
 
   <p
     id="real-radar-status"
@@ -279,7 +311,7 @@
   </p>
 
   <div class="table-scroll">
-    <table class="opportunities-table">
+    <table class="opportunities-table real-radar-table">
       <thead>
         <tr>
           <th>Plataforma</th>
@@ -288,6 +320,8 @@
           <th>NO</th>
           <th>Custo</th>
           <th>Edge</th>
+          <th>Varia&ccedil;&atilde;o</th>
+          <th>Tend&ecirc;ncia</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -431,6 +465,6 @@
         routerWsPath: {{ router_ws_path | tojson }}
     };
 </script>
-<script type="module" src="/dashboard/static/js/dashboard.js?v=14-radar-ui-4"></script>
+<script type="module" src="/dashboard/static/js/dashboard.js?v=15-monitoring-1"></script>
 </body>
 </html>
