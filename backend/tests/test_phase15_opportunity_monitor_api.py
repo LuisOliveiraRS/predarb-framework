@@ -6,19 +6,27 @@ from app.real_markets.opportunity_radar import (
 )
 
 
-class FakeMonitor:
+class FakeScanService:
     def __init__(self):
         self.scan_configuration = None
+        self.force_refresh = None
         self.history_request = None
 
-    async def scan(self, configuration):
+    async def scan(
+        self,
+        configuration,
+        *,
+        force_refresh,
+    ):
         self.scan_configuration = configuration
+        self.force_refresh = force_refresh
 
         return {
             "status": "READY",
             "monitoring": {
                 "tracked_markets": 1,
                 "history_points": 1,
+                "cache_hit": False,
             },
             "alerts": [],
             "market_data_only": True,
@@ -45,14 +53,7 @@ class FakeMonitor:
             "connector_id": connector_id,
             "market_id": market_id,
             "count": 2,
-            "points": [
-                {
-                    "gross_edge": -0.02,
-                },
-                {
-                    "gross_edge": -0.01,
-                },
-            ],
+            "points": [],
             "market_data_only": True,
             "read_only": True,
             "execution_authorized": False,
@@ -61,13 +62,15 @@ class FakeMonitor:
         }
 
 
-def test_opportunities_endpoint_uses_monitor(monkeypatch):
-    monitor = FakeMonitor()
+def test_opportunities_endpoint_uses_scan_service(
+    monkeypatch,
+):
+    service = FakeScanService()
 
     monkeypatch.setattr(
         real_opportunity_radar,
-        "real_opportunity_monitor",
-        monitor,
+        "real_opportunity_scan_service",
+        service,
     )
 
     payload = asyncio.run(
@@ -75,10 +78,11 @@ def test_opportunities_endpoint_uses_monitor(monkeypatch):
             limit_per_connector=25,
             fee_buffer=0.03,
             near_threshold=0.06,
+            force_refresh=True,
         )
     )
 
-    configuration = monitor.scan_configuration
+    configuration = service.scan_configuration
 
     assert isinstance(
         configuration,
@@ -87,24 +91,23 @@ def test_opportunities_endpoint_uses_monitor(monkeypatch):
     assert configuration.limit_per_connector == 25
     assert configuration.fee_buffer == 0.03
     assert configuration.near_threshold == 0.06
+    assert service.force_refresh is True
 
-    assert payload["monitoring"][
-        "tracked_markets"
-    ] == 1
+    assert payload["monitoring"]["cache_hit"] is False
     assert payload["read_only"] is True
     assert payload["execution_authorized"] is False
     assert payload["financial_execution"] is False
 
 
-def test_history_endpoint_returns_read_only_points(
+def test_history_endpoint_uses_scan_service(
     monkeypatch,
 ):
-    monitor = FakeMonitor()
+    service = FakeScanService()
 
     monkeypatch.setattr(
         real_opportunity_radar,
-        "real_opportunity_monitor",
-        monitor,
+        "real_opportunity_scan_service",
+        service,
     )
 
     payload = asyncio.run(
@@ -115,7 +118,7 @@ def test_history_endpoint_returns_read_only_points(
         )
     )
 
-    assert monitor.history_request == {
+    assert service.history_request == {
         "connector_id": "kalshi",
         "market_id": "market-123",
         "limit": 30,
