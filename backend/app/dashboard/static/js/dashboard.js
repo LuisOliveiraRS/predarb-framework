@@ -806,6 +806,22 @@ function realRadarPercent(value) {
   return `${(parsed * 100).toFixed(2)}%`;
 }
 
+function realRadarSignedPercent(value) {
+  if (value === null || value === undefined) {
+    return "\u2014";
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return "\u2014";
+  }
+
+  const prefix = parsed > 0 ? "+" : "";
+
+  return `${prefix}${(parsed * 100).toFixed(2)}%`;
+}
+
 function realRadarStatusLabel(status) {
   const labels = {
     PROFITABLE: "Lucrativa",
@@ -816,10 +832,56 @@ function realRadarStatusLabel(status) {
   return labels[status] || status || "Indefinido";
 }
 
+function realRadarTrendLabel(trend) {
+  const labels = {
+    NEW: "Novo",
+    IMPROVING: "Melhorando",
+    WORSENING: "Piorando",
+    STABLE: "Est\u00e1vel",
+  };
+
+  return labels[trend] || trend || "Indefinido";
+}
+
+function realRadarTrendClass(trend) {
+  const classes = {
+    NEW: "real-radar-trend-new",
+    IMPROVING: "real-radar-trend-improving",
+    WORSENING: "real-radar-trend-worsening",
+    STABLE: "",
+  };
+
+  return classes[trend] || "";
+}
+
 function realRadarCell(row, value) {
   const cell = document.createElement("td");
   cell.textContent = value;
   row.appendChild(cell);
+  return cell;
+}
+
+function realRadarTrendCell(row, item) {
+  const cell = document.createElement("td");
+  const badge = document.createElement("span");
+
+  badge.className = "real-radar-trend-badge";
+
+  const trendClass = realRadarTrendClass(
+    item.trend,
+  );
+
+  if (trendClass) {
+    badge.classList.add(trendClass);
+  }
+
+  badge.textContent = realRadarTrendLabel(
+    item.trend,
+  );
+
+  cell.appendChild(badge);
+  row.appendChild(cell);
+
   return cell;
 }
 
@@ -833,6 +895,21 @@ function renderRealOpportunityRadar(payload = {}) {
   const near = document.getElementById(
     "real-radar-near",
   );
+  const newMarkets = document.getElementById(
+    "real-radar-new",
+  );
+  const improving = document.getElementById(
+    "real-radar-improving",
+  );
+  const worsening = document.getElementById(
+    "real-radar-worsening",
+  );
+  const historyPoints = document.getElementById(
+    "real-radar-history-points",
+  );
+  const alerts = document.getElementById(
+    "real-radar-alerts",
+  );
   const status = document.getElementById(
     "real-radar-status",
   );
@@ -840,9 +917,22 @@ function renderRealOpportunityRadar(payload = {}) {
     "real-radar-body",
   );
 
-  if (!priced || !profitable || !near || !status || !body) {
+  if (
+    !priced ||
+    !profitable ||
+    !near ||
+    !newMarkets ||
+    !improving ||
+    !worsening ||
+    !historyPoints ||
+    !alerts ||
+    !status ||
+    !body
+  ) {
     return;
   }
+
+  const monitoring = payload.monitoring || {};
 
   priced.textContent = String(
     payload.markets_priced || 0,
@@ -853,6 +943,32 @@ function renderRealOpportunityRadar(payload = {}) {
   near.textContent = String(
     payload.near_opportunity_count || 0,
   );
+  newMarkets.textContent = String(
+    monitoring.new_count || 0,
+  );
+  improving.textContent = String(
+    monitoring.improving_count || 0,
+  );
+  worsening.textContent = String(
+    monitoring.worsening_count || 0,
+  );
+  historyPoints.textContent = String(
+    monitoring.history_points || 0,
+  );
+
+  const alertItems = Array.isArray(payload.alerts)
+    ? payload.alerts
+    : [];
+
+  if (alertItems.length > 0) {
+    alerts.hidden = false;
+    alerts.textContent =
+      `${alertItems.length} mercado(s) se tornou(aram) ` +
+      "lucrativo(s) desde a atualiza\u00e7\u00e3o anterior.";
+  } else {
+    alerts.hidden = true;
+    alerts.textContent = "";
+  }
 
   body.replaceChildren();
 
@@ -864,9 +980,9 @@ function renderRealOpportunityRadar(payload = {}) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
 
-    cell.colSpan = 7;
+    cell.colSpan = 9;
     cell.textContent =
-      "Nenhum mercado precificado nesta atualiza??o.";
+      "Nenhum mercado precificado nesta atualiza\u00e7\u00e3o.";
 
     row.appendChild(cell);
     body.appendChild(row);
@@ -874,6 +990,12 @@ function renderRealOpportunityRadar(payload = {}) {
 
   for (const item of markets) {
     const row = document.createElement("tr");
+
+    if (item.became_profitable) {
+      row.classList.add(
+        "real-radar-row-profitable",
+      );
+    }
 
     realRadarCell(
       row,
@@ -917,6 +1039,14 @@ function renderRealOpportunityRadar(payload = {}) {
     realRadarCell(
       row,
       realRadarPercent(item.gross_edge),
+    );
+    realRadarCell(
+      row,
+      realRadarSignedPercent(item.edge_change),
+    );
+    realRadarTrendCell(
+      row,
+      item,
     );
     realRadarCell(
       row,

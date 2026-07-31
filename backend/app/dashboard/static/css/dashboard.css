@@ -962,3 +962,106 @@ tbody tr:hover {
         min-width: 840px;
     }
 }
+
+
+/* Phase 15 - Opportunity monitoring */
+
+.real-radar-monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.real-radar-monitoring-card {
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: rgba(148, 163, 184, 0.055);
+}
+
+.real-radar-monitoring-card span,
+.real-radar-monitoring-card strong {
+    display: block;
+}
+
+.real-radar-monitoring-card span {
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+.real-radar-monitoring-card strong {
+    margin-top: 7px;
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+}
+
+.real-radar-alerts {
+    margin: 14px 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    border-radius: 12px;
+    background: rgba(52, 211, 153, 0.09);
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.real-radar-alerts[hidden] {
+    display: none;
+}
+
+.real-radar-table {
+    min-width: 1180px;
+}
+
+.real-radar-trend-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.real-radar-trend-improving {
+    color: var(--green);
+    border-color: rgba(52, 211, 153, 0.22);
+    background: rgba(52, 211, 153, 0.08);
+}
+
+.real-radar-trend-worsening {
+    color: var(--red);
+    border-color: rgba(251, 113, 133, 0.22);
+    background: rgba(251, 113, 133, 0.08);
+}
+
+.real-radar-trend-new {
+    color: var(--yellow);
+    border-color: rgba(251, 191, 36, 0.22);
+    background: rgba(251, 191, 36, 0.08);
+}
+
+.real-radar-row-profitable {
+    background: rgba(52, 211, 153, 0.045);
+}
+
+@media (max-width: 900px) {
+    .real-radar-monitoring-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .real-radar-monitoring-grid {
+        grid-template-columns: 1fr;
+    }
+}
