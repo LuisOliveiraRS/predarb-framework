@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///predarb.db"
     DATABASE_ECHO: bool = False
 
+    # Fase 16 - cache de coletas reais
+    REAL_OPPORTUNITY_CACHE_TTL_SECONDS: float = 45.0
+    REAL_OPPORTUNITY_PERSISTENCE_ENABLED: bool = False
+    REAL_OPPORTUNITY_PERSISTENCE_HISTORY_LIMIT: int = 60
+
     # Ciclo de vida operacional
     MOCK_CONNECTOR_ENABLED: bool = True
     HYPERLIQUID_CONNECTOR_ENABLED: bool = True
@@ -416,6 +421,31 @@ class Settings(BaseSettings):
             raise ValueError("AI_MODEL_NAME não pode ser vazio.")
         if not self.AI_MODEL_ROOT:
             raise ValueError("AI_MODEL_ROOT não pode ser vazio.")
+        if not (
+            5.0
+            <= float(
+                self.REAL_OPPORTUNITY_CACHE_TTL_SECONDS
+            )
+            <= 300.0
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_CACHE_TTL_SECONDS "
+                "deve ficar entre 5 e 300 segundos."
+            )
+
+        if not (
+            1
+            <= int(
+                self.REAL_OPPORTUNITY_PERSISTENCE_HISTORY_LIMIT
+            )
+            <= 1440
+        ):
+            raise ValueError(
+                "REAL_OPPORTUNITY_PERSISTENCE_"
+                "HISTORY_LIMIT deve ficar entre "
+                "1 e 1440."
+            )
+
         if not self.DATABASE_URL:
             raise ValueError("DATABASE_URL não pode ser vazio.")
         if self.HYPERLIQUID_CONNECTOR_ENABLED and not self.HYPERLIQUID_API_URL:
