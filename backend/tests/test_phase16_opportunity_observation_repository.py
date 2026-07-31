@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database.session import Base
+from app.real_markets.opportunity_database import ObservationBase
 from app.real_markets.opportunity_observation_repository import (
     RealOpportunityObservationRepository,
 )
@@ -21,7 +21,7 @@ def build_repository():
         poolclass=StaticPool,
     )
 
-    Base.metadata.create_all(bind=engine)
+    ObservationBase.metadata.create_all(bind=engine)
 
     factory = sessionmaker(
         bind=engine,

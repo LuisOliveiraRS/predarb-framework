@@ -7,7 +7,6 @@ from app.database.models import (
     OrderModel,
     TradeModel,
     PositionModel,
-    RealMarketObservationModel,
 )
 
 

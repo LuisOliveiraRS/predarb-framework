@@ -14,10 +14,10 @@ from sqlalchemy import String
 from sqlalchemy import Text
 from sqlalchemy import UniqueConstraint
 
-from app.database.session import Base
+from app.real_markets.opportunity_database import ObservationBase
 
 
-class RealMarketObservationModel(Base):
+class RealMarketObservationModel(ObservationBase):
     __tablename__ = "real_market_observations"
 
     __table_args__ = (
