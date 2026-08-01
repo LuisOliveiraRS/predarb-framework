@@ -17,6 +17,10 @@ __pycache__/
 .env
 .env.*
 
+# Excecao: o template versionado nao contem segredo algum.
+# Precisa vir depois de .env.* para que a negacao tenha efeito.
+!backend/.env.example
+
 # Python cache
 .pytest_cache/
 .mypy_cache/
