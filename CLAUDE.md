@@ -2,9 +2,11 @@
 
 > Coloque este arquivo na raiz de `C:\predarb-framework` para servir como contexto principal do Claude Code no VSCode.
 >
-> Data do contexto: 31/07/2026.
+> Data do contexto: 01/08/2026.
 >
-> Estado crítico: a Fase 17 está implementada, commitada e enviada ao `origin` no branch de feature, mas ainda **não** foi merjada nem implantada em produção.
+> Estado: a Fase 17 está implantada e validada em produção. A próxima fase é a 18.
+>
+> Pendência de segurança conhecida: a autenticação existe e funciona, mas **não está sendo exigida em produção**. Ver seção 4.
 
 ---
 
@@ -99,20 +101,19 @@ Esse commit corresponde ao merge da correção de isolamento do banco de observa
 
 ### Commits da Fase 17
 
-O trabalho da Fase 17 está protegido por commit. Não há mais alterações pendentes no working tree.
+A Fase 17 foi merjada na `main` pelo PR #16 e tagueada.
 
 ```text
-78d0fef feat: collect real opportunity radar in background
-        12 arquivos, +1537/-94
-        coletor, scheduler task, application, settings,
-        dashboard e testes de snapshot/freshness
+823d84f Merge pull request #16
+        tag phase-17-background-radar-collector
 
+0b649a3 chore: version the env template and document phase 16/17 settings
+f65d2ba docs: sync CLAUDE.md with real phase 17 state
 a556744 feat: throttle external radar force refresh and require auth
-        6 arquivos, +511/-2
-        cooldown de force_refresh e autenticação no /opportunities
+78d0fef feat: collect real opportunity radar in background
 ```
 
-Branch sincronizado com `origin/feature/phase-17-background-radar-collector` até o commit `78d0fef`. O commit de guardrails ainda **não** foi enviado — push, PR, merge, tag e deploy seguem exigindo autorização explícita.
+Total do PR: 16 arquivos, +3945/−94.
 
 O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: duplica a seção 30 deste documento e tende a divergir dela.
 
@@ -124,6 +125,15 @@ git diff --check: aprovado
 auditoria de flags financeiras: 12/12 False em 511 ocorrências
 varredura de segredos no diff: nenhum indício
 ```
+
+Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
+
+```powershell
+# 107 arquivos divididos em 4 lotes evitam importar tudo de uma vez
+Get-ChildItem tests\test_*.py | Sort-Object Name
+```
+
+O total esperado permanece 688.
 
 Warnings conhecidos:
 
@@ -153,6 +163,50 @@ Consequências:
 - memória e cache são locais ao processo;
 - persistência Supabase deve sobreviver aos reinícios;
 - não assumir coordenação distribuída entre múltiplos workers.
+
+Um reinício zera a memória: `history_points` volta a `0` e o snapshot volta a `WARMING_UP` até o primeiro ciclo do coletor. Isso é esperado. O histórico persistente é reidratado do banco dedicado.
+
+### Autenticação em produção — PENDENTE
+
+A autenticação da Fase 13B está implementada, testada e funcional, mas **não está sendo exigida** no ambiente do Render. Verificado em 01/08/2026:
+
+```text
+GET /dashboard                          -> 200 sem credencial
+                                           serve o dashboard real, nao a tela de login
+GET /real-markets/radar/opportunities   -> 200 sem credencial, com dado real
+GET /auth/me                            -> 401  (o mecanismo funciona)
+GET /docs e /openapi.json               -> 200 publicos
+```
+
+A causa é `app/auth/dependencies.py:157-158`: `require_dashboard_user` faz `return None` de imediato quando `AUTH_REQUIRED_FOR_DASHBOARD` é falso, sem sequer olhar a credencial. Os defaults de `settings.py:15-16` são `false` para `AUTH_ENABLED` e `AUTH_REQUIRED_FOR_DASHBOARD`, então basta a variável não existir no Render para tudo ficar aberto.
+
+Consequência prática: a proteção adicionada ao `/opportunities` na Fase 17 é hoje um no-op em produção. O código está correto; a flag que o ativa é que está desligada.
+
+#### Como ligar sem derrubar o serviço
+
+Pré-requisitos, todos validados no boot — qualquer um faltando impede a aplicação de subir:
+
+- `SUPABASE_URL` preenchida e começando com `https://` fora de DEBUG;
+- `SUPABASE_PUBLISHABLE_KEY` preenchida (é a chave pública; a service-role nunca entra aqui);
+- `SUPABASE_JWT_AUDIENCE` não vazia, default `authenticated`;
+- `AUTH_COOKIE_SECURE=true` fora de DEBUG;
+- `SUPABASE_JWKS_CACHE_TTL_SECONDS` entre 60 e 600.
+
+Ativação em duas etapas, para separar "as credenciais estão certas" de "o acesso está fechado":
+
+```text
+Etapa 1   AUTH_ENABLED=true
+          AUTH_REQUIRED_FOR_DASHBOARD=false
+          Se o servico subir, os pre-requisitos estao satisfeitos.
+          Se nao subir, reverter AUTH_ENABLED=false imediatamente.
+
+Etapa 2   AUTH_REQUIRED_FOR_DASHBOARD=true
+          Passa a exigir credencial.
+```
+
+Atenção ao MFA: `require_dashboard_user` chama `user.require_mfa()`. Um usuário autenticado **sem MFA inscrito recebe 403**, não 200. Confirme que a conta admin tem TOTP ativo antes da etapa 2, sob risco de ficar sem acesso ao próprio dashboard.
+
+Rollback de qualquer etapa: `AUTH_ENABLED=false`.
 
 ### Supabase
 
@@ -373,7 +427,9 @@ phase-16-observation-db-isolation-fix
 
 Produção aprovada: Session Pooler, persistência, cache, histórico e banco principal preservados.
 
-### 17 — coletor automático, commitada e pendente de deploy
+### 17 — coletor automático, implantada e validada em produção
+
+Merge `823d84f`, tag `phase-17-background-radar-collector`, deploy automático no Render em 01/08/2026.
 
 Implementado:
 
@@ -409,6 +465,34 @@ GET /real-markets/radar/opportunities       # exige require_dashboard_user
 O payload de `monitoring` ganhou três campos: `force_refresh_requested`, `force_refresh_applied` e `force_refresh_retry_after_seconds`.
 
 A janela é consumida no momento da requisição, antes da coleta executar. Se o scan falhar, o cooldown já foi gasto. É deliberado e coerente com a regra fail-closed da seção 1.
+
+Detalhe não óbvio pela leitura do código: `bypass_cooldown=True` pula a **verificação** do cooldown, mas ainda **grava** `_last_forced_at`. Como o coletor automático usa esse caminho a cada ciclo, um `force_refresh` externo logo após um ciclo é recusado. É o comportamento desejado — o dado acabou de ser atualizado de qualquer forma — e foi confirmado em produção.
+
+#### Resultado da validação em produção (01/08/2026)
+
+```text
+coletor    enabled=true cycles=11 successes=11 failures=0 skipped=0
+           last_status=READY  last_markets_priced=20
+           ciclo leva ~16s num intervalo de 60s
+
+snapshot   status=READY  served_from_snapshot=true
+           snapshot_is_stale=false
+           snapshot_configuration_match=true
+           snapshot_max_age_seconds=180.0  (intervalo 60 x multiplicador 3)
+           duas chamadas seguidas: cycles 11 -> 11, delta 0
+
+historico  source=persistent  persistence_available=true  error=null
+           pontos atravessaram os reinicios do dia
+
+guardrail  force_refresh externo rebaixado para cache,
+           retry_after decrescendo, cache_hit=true
+
+flags      read_only e market_data_only true; execution_authorized,
+           financial_execution, automatic_execution_authorized e
+           order_submission_available false nos tres endpoints
+```
+
+Quando o snapshot reporta `CONFIGURATION_MISMATCH`, compare `snapshot_configuration` com `requested_configuration` antes de suspeitar de defeito: em geral significa que alguém chamou `/opportunities` com os defaults daquele endpoint (`limit=40`, `near=0.04`), que diferem dos do coletor. Resolve-se sozinho no ciclo seguinte.
 
 ---
 
@@ -1257,25 +1341,14 @@ Aplicar:
 
 ## 23. Roadmap recomendado
 
-### Fase 17 — concluir e publicar
+### Fase 17 — CONCLUÍDA
 
-Estado: código commitado no branch de feature. Falta publicar.
+Merge `823d84f`, tag `phase-17-background-radar-collector`, implantada e validada em produção em 01/08/2026. Todos os critérios da seção 25 aprovados. Resultado registrado na seção 5.
 
-Concluído:
+Ficou de fora, por ser independente desta fase:
 
-1. ~~revisar diff~~ — feito;
-2. ~~commit autorizado~~ — `78d0fef` e o commit de guardrails;
-3. ~~confirmar flags falsas~~ — 12/12 `False`.
-
-Pendente:
-
-4. push do commit de guardrails;
-5. PR, merge e tag;
-6. configurar env no Render, incluindo `REAL_OPPORTUNITY_FORCE_REFRESH_COOLDOWN_SECONDS`;
-7. deploy;
-8. validar status/snapshot;
-9. validar persistência e reinício;
-10. revalidar `/opportunities` autenticado em produção, já que deixou de ser público.
+- ligar a exigência de autenticação em produção (seção 4);
+- `/docs` e `/openapi.json` respondem publicamente.
 
 ### Fase 18 — domínio cripto read-only
 
@@ -1645,24 +1718,25 @@ Leia integralmente o arquivo CLAUDE.md na raiz do projeto antes de agir.
 Estamos em C:\predarb-framework, branch
 feature/phase-17-background-radar-collector.
 
-A Fase 17 está implementada, commitada e validada com 688 testes aprovados,
-mas ainda não foi merjada nem implantada. Não faça commit, push, merge, tag,
-deploy, stash, reset ou descarte sem minha autorização.
+A Fase 17 está concluída: merjada, tagueada, implantada e validada em
+produção, com 688 testes aprovados. A próxima fase é a 18. Não faça commit,
+push, merge, tag, deploy, stash, reset ou descarte sem minha autorização.
 
 Primeiro:
 1. execute git status --short --branch e git log --oneline -6;
 2. compare o estado real com a seção 3 e aponte divergências;
-3. faça um resumo técnico do que ainda falta na Fase 17;
-4. confirme que as proteções financeiras continuam desativadas;
-5. informe qualquer risco ou inconsistência real.
+3. confirme que as proteções financeiras continuam desativadas;
+4. informe qualquer risco ou inconsistência real.
 
 Não altere arquivos ainda.
 
-Depois seguiremos com a conclusão da Fase 17 e a expansão para o novo
-bounded context de arbitragem de criptomoedas CEX/DEX/Web3, começando
-somente por dados públicos e simulação. Nenhuma execução real deverá ser
-habilitada sem autorização explícita e sem cumprir o checklist definido
-no CLAUDE.md.
+Depois seguiremos para a Fase 18, o novo bounded context de arbitragem de
+criptomoedas CEX/DEX/Web3, começando somente por dados públicos e
+simulação. Nenhuma execução real deverá ser habilitada sem autorização
+explícita e sem cumprir o checklist definido no CLAUDE.md.
+
+Há uma pendência de segurança em aberto, descrita na seção 4: a
+autenticação existe e funciona, mas não está sendo exigida em produção.
 ```
 
 ---
