@@ -99,6 +99,7 @@ from app.paper.shadow_execution_runtime import (
 from app.scheduler.scheduler import scheduler_service
 from app.scheduler.tasks import (
     market_update_task,
+    real_opportunity_background_task,
     shadow_runtime_task,
     update_markets_async,
 )
@@ -159,6 +160,7 @@ async def lifespan(app: FastAPI):
         "connectors": False,
         "market_listener": False,
         "scheduler": False,
+        "real_opportunity_background_collector": False,
         "shadow_runtime_scheduler": False,
         "execution_worker": False,
         "router_dashboard": False,
@@ -222,6 +224,26 @@ async def lifespan(app: FastAPI):
                 job_id="market_update_task",
                 replace_existing=True,
             )
+
+            if (
+                settings
+                .REAL_OPPORTUNITY_BACKGROUND_COLLECTOR_ENABLED
+            ):
+                scheduler_service.add_job(
+                    real_opportunity_background_task,
+                    seconds=(
+                        settings
+                        .REAL_OPPORTUNITY_BACKGROUND_INTERVAL_SECONDS
+                    ),
+                    job_id=(
+                        "real_opportunity_background_task"
+                    ),
+                    replace_existing=True,
+                )
+
+                app.state.lifecycle[
+                    "real_opportunity_background_collector"
+                ] = True
 
             if (
                 settings.SHADOW_RUNTIME_ENABLED
