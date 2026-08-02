@@ -55,14 +55,22 @@ class SequenceMode(str, Enum):
     `PREVIOUS_MATCH` — o update declara qual sequência ele
     sucede, e ela deve bater com a última aplicada.
 
-    `NONE` — sem validação. Só aceitável para venues que
-    realmente não publicam sequência, e nesse caso o book não tem
-    como detectar perda de mensagem. Evitar.
+    `MONOTONIC` — exige apenas que a sequência avance. Aceita
+    saltos, então **não detecta gap**. É o modo honesto para
+    venues que numeram updates mas não documentam continuidade:
+    presumir incremento de 1 nesses casos produziria alarme falso
+    em operação normal. A integridade fica por conta de outros
+    sinais, como snapshot novo ou book cruzado.
+
+    `NONE` — sem validação alguma, aceita até retrocesso. Só
+    aceitável para venues que realmente não publicam sequência.
+    Evitar.
     """
 
     STRICT_INCREMENT = "STRICT_INCREMENT"
     RANGE = "RANGE"
     PREVIOUS_MATCH = "PREVIOUS_MATCH"
+    MONOTONIC = "MONOTONIC"
     NONE = "NONE"
 
 
@@ -331,6 +339,9 @@ class LocalOrderBook:
 
         if final <= last:
             return False
+
+        if self.sequence_mode is SequenceMode.MONOTONIC:
+            return True
 
         if self.sequence_mode is SequenceMode.STRICT_INCREMENT:
             if final == last + 1:

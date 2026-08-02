@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. As Fases 18 e 19A estão implementadas e aprovadas localmente, sem deploy — são domínio e lógica pura, sem endpoint. O próximo incremento é o 19B.
+> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A e 19B estão implementadas e aprovadas localmente, sem deploy — são domínio e lógica pura, sem rede e sem endpoint. O próximo incremento é o 19C, o transporte.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,7 +88,7 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-19a-local-order-book
+feature/phase-19b-venue-adapters
 ```
 
 As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
@@ -122,13 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-799 passed, 2 warnings in 30.11s
+840 passed, 2 warnings in 36.02s
 git diff --check: aprovado
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a Fase 19A.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a Fase 19A, 840 com a 19B.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -137,7 +137,7 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 799.
+O total esperado permanece 840.
 
 Warnings conhecidos:
 
@@ -671,6 +671,53 @@ Os conectores da 19B traduzem seus payloads para esse formato. A escolha evita e
 **Idade negativa não é dado novo.** Timestamp adiantado além de `max_clock_skew_ms` invalida o dado: não se sabe mais qual relógio mentiu. O `LatencyTracker` preserva amostras negativas em vez de zerá-las, porque skew de relógio é sintoma real e escondê-lo com `max(0, x)` apagaria a evidência.
 
 **Conector degradado bloqueia mesmo com book recente.** `is_usable_for_pricing` combina estado e frescor: idade baixa só prova que a última mensagem chegou há pouco, não que o livro reflete a venue.
+
+### 19B — adaptadores Binance, OKX e Bybit
+
+Implementada em 02/08/2026. Tradução dos formatos públicos das três venues para o domínio, em `backend/app/crypto_arbitrage/connectors/`. Sem rede: os adaptadores recebem `dict` já decodificado. 799 testes antes, 840 depois.
+
+```text
+connectors/venue_adapter.py   tipos comuns: SnapshotPayload, StreamMessage,
+                              StreamMessageKind, InstrumentParseResult,
+                              SkippedInstrument, VenueAdapter, parse_levels
+connectors/binance/           BinanceSpotAdapter
+connectors/okx/               OkxSpotAdapter
+connectors/bybit/             BybitSpotAdapter
+```
+
+#### Formatos confirmados na documentação oficial em 02/08/2026
+
+| Venue | Instrumentos | Book | Modo |
+|---|---|---|---|
+| Binance | `/api/v3/exchangeInfo` | `/api/v3/depth`, stream `depthUpdate` | `RANGE` |
+| OKX | `/api/v5/public/instruments` | canal `books` | `PREVIOUS_MATCH` |
+| Bybit | `/v5/market/instruments-info` | tópico `orderbook.<depth>.<symbol>` | `MONOTONIC` |
+
+#### A Bybit tem garantia de integridade mais fraca
+
+Isto é achado de pesquisa, não limitação da implementação, e deve pesar no buffer de segurança do scanner da Fase 20.
+
+A documentação da Bybit **não afirma** que `u` incrementa de um em um entre deltas, **não descreve** método para detectar mensagem perdida, e diz que `seq` serve para comparar níveis de profundidade entre si — não para achar buraco. Pior: em nível 1, o snapshot é reenviado com o **mesmo** `u` quando nada muda por três segundos.
+
+Presumir `STRICT_INCREMENT` inventaria uma garantia inexistente e produziria alarme falso de gap em operação normal. Daí o modo `MONOTONIC`, acrescentado ao 19A: exige apenas que a sequência avance, sem alegar detecção de gap. A integridade da Bybit fica por conta do que ela de fato documenta — `type == "snapshot"` obriga reset, `u == 1` indica reinício de serviço e também obriga reset, e o livro levanta erro se cruzar.
+
+Binance e OKX detectam gap de verdade. Bybit não.
+
+#### O checksum da OKX foi depreciado
+
+Em **23/06/2026** a OKX depreciou o campo `checksum` dos canais `books`, `books-l2-tbt` e `books50-l2-tbt`. O campo continua presente, mas com valor **fixo em `0`**, e a documentação diz explicitamente que não deve mais ser usado para verificar integridade. A orientação oficial passou a ser `seqId`/`prevSeqId`.
+
+Consequência prática: não há trabalho de CRC32 a fazer. Versões anteriores do planejamento previam esse esforço; ele deixou de existir.
+
+#### Outras decisões
+
+**`parse_levels` lê por posição fixa.** A OKX publica quatro elementos por nível; os dois últimos não interessam ao livro. Ignorar o excedente mantém um parser único válido para as três venues.
+
+**Descarte de instrumento carrega o motivo.** `InstrumentParseResult` separa aceitos de descartados, e cada descarte traz `raw_symbol` e razão. Um símbolo malformado não derruba a lista inteira, mas também não some em silêncio — sumir viraria "a venue não lista esse par" na investigação seguinte.
+
+**`StreamMessageKind.IGNORED` é explícito.** Confirmação de inscrição, ping e mensagens de controle devolvem um tipo próprio em vez de `None`, obrigando quem consome a decidir o que fazer em vez de tratar ausência como sucesso.
+
+**Cuidado documentado da Binance:** o campo `pu` existe na API de **futuros** USDS-M, não no spot. Validar contra ele no spot compararia com campo inexistente. `is_snapshot_usable` implementa o passo 4 do procedimento oficial: snapshot com `lastUpdateId` menor que o `U` do primeiro evento bufferizado é velho demais e outro precisa ser buscado.
 
 ---
 
@@ -1551,13 +1598,13 @@ Dividida em três incrementos, porque a fase inteira num único PR não é revis
 
 Lógica pura em `backend/app/crypto_arbitrage/market_data/`, sem rede: `local_book.py`, `freshness.py` e `latency.py`. Detalhes na seção 5.
 
-**19B — REST e normalização.** `list_instruments` e snapshot inicial das três venues, traduzindo cada formato para `Instrument` e `OrderBookSnapshot`. Testes por fixture.
+**19B — adaptadores das três venues. CONCLUÍDA em 02/08/2026.**
 
-Antes de implementar, revalidar os formatos reais na documentação oficial (seção 29). Os três diferem em pontos que importam: a Binance usa o intervalo `U`/`u` de update IDs, a OKX publica checksum CRC32 do book, e a Bybit distingue `u` de `seq`. Errar qualquer um produz gap fantasma ou book corrompido em silêncio.
+Tradução dos formatos públicos para o domínio, em `backend/app/crypto_arbitrage/connectors/`, sem rede. Formatos revalidados na documentação oficial conforme a seção 29. Detalhes na seção 5, incluindo dois achados que alteraram o planejamento: a Bybit não documenta continuidade de sequência, e o checksum da OKX foi depreciado em 23/06/2026.
 
-**19C — WebSocket e stream manager.** Conexão, ping/pong, reconexão com backoff e jitter, rate limit, contadores de gap e reconnect, health por conector.
+**19C — transporte.** Cliente REST, WebSocket, conexão, ping/pong, reconexão com backoff e jitter, rate limit, contadores de gap e reconnect, health por conector. É o incremento que finalmente toca a rede.
 
-Aceitação da fase completa: três books normalizados, stale bloqueado e testes por fixtures.
+Aceitação da fase completa: três books normalizados, stale bloqueado e testes por fixtures. Os dois primeiros critérios já estão satisfeitos pelo 19B; falta o transporte.
 
 ### Fase 20 — scanner CEX-CEX Paper
 
