@@ -69,6 +69,22 @@ class ConnectorError(CryptoArbitrageError):
     """Falha genérica de conector."""
 
 
+class TransportError(ConnectorError):
+    """Falha de rede, timeout ou resposta ilegível."""
+
+
+class RateLimitExceededError(ConnectorError):
+    """Limite local de requisições atingido.
+
+    Preventivo: evita chegar ao limite da venue, cuja punição
+    costuma ser banimento temporário de IP.
+    """
+
+
+class SynchronizationError(ConnectorError):
+    """Não foi possível sincronizar o livro com a venue."""
+
+
 class ConnectorAlreadyRegisteredError(ConnectorError):
     """Já existe conector registrado com o mesmo identificador."""
 
