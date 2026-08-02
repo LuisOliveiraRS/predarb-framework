@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A e 19B estão implementadas e aprovadas localmente, sem deploy — são domínio e lógica pura, sem rede e sem endpoint. O próximo incremento é o 19C, o transporte.
+> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B e 19C1 estão implementadas e aprovadas localmente, sem deploy — são domínio e lógica pura, sem rede e sem endpoint. O próximo incremento é o 19C2, o transporte concreto.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,7 +88,7 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-19b-venue-adapters
+feature/phase-19c1-stream-orchestration
 ```
 
 As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
@@ -122,13 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-840 passed, 2 warnings in 36.02s
+880 passed, 2 warnings in 51.40s
 git diff --check: aprovado
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a Fase 19A, 840 com a 19B.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -137,7 +137,18 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 840.
+O total esperado permanece 880.
+
+### Teste instável conhecido
+
+```text
+tests/test_paper_certification_assurance_gate_history_runtime.py
+    ::test_runtime_processes_periodic_cycles
+```
+
+Falha intermitentemente na suíte completa e passa isolado. A causa está no próprio teste, não no código: ele inicia um runtime com `interval_seconds=0.02`, dorme `0.08` e exige ao menos dois ciclos. Sob carga da suíte inteira, o event loop nem sempre entrega quatro janelas de 20 ms.
+
+Observado em 02/08/2026 durante a Fase 19C1, com nova execução passando em seguida. **Não é regressão** — nenhum arquivo de `paper/` foi tocado pelas fases 18 e 19. Se falhar, reexecute antes de investigar. A correção adequada seria substituir o tempo de parede por relógio controlado, como fizeram `rate_limiter.py` e `backoff.py`.
 
 Warnings conhecidos:
 
@@ -718,6 +729,40 @@ Consequência prática: não há trabalho de CRC32 a fazer. Versões anteriores 
 **`StreamMessageKind.IGNORED` é explícito.** Confirmação de inscrição, ping e mensagens de controle devolvem um tipo próprio em vez de `None`, obrigando quem consome a decidir o que fazer em vez de tratar ausência como sucesso.
 
 **Cuidado documentado da Binance:** o campo `pu` existe na API de **futuros** USDS-M, não no spot. Validar contra ele no spot compararia com campo inexistente. `is_snapshot_usable` implementa o passo 4 do procedimento oficial: snapshot com `lastUpdateId` menor que o `U` do primeiro evento bufferizado é velho demais e outro precisa ser buscado.
+
+### 19C1 — orquestração de stream
+
+Implementada em 02/08/2026. Terceiro incremento da Fase 19, ainda sem rede: contratos de transporte, política de reconexão, rate limit, métricas e o orquestrador que junta tudo. 840 testes antes, 880 depois.
+
+```text
+connectors/transport.py         RestTransport, WebSocketTransport (Protocols)
+market_data/backoff.py          BackoffPolicy, ReconnectTracker
+market_data/rate_limiter.py     TokenBucketRateLimiter
+market_data/metrics.py          ConnectorMetrics
+market_data/stream_manager.py   BookStreamManager, StreamOutcome, StreamResult
+```
+
+O 19C foi dividido porque transporte concreto e orquestração são riscos diferentes. A orquestração é onde erros custam caro e é totalmente testável sem rede; o cliente HTTP e o WebSocket são encanamento. O 19C2 entrega os clientes concretos com `httpx` e `websockets`, ambos já presentes no `requirements.txt` — a fase não acrescenta dependência.
+
+#### Decisões que valem conhecer
+
+**Gap e corrupção viram resultado, não exceção.** `handle_message` devolve `StreamResult` com `StreamOutcome`, e `RESYNC_REQUIRED` cobre gap de sequência, book cruzado e delta antes do snapshot. São estados operacionais previstos, não bugs. Deixá-los escapar como exceção obrigaria cada chamador a reimplementar o mesmo `try/except`, e bastaria um esquecimento para uma perda de mensagem virar crash — ou, pior, ser engolida.
+
+**A aleatoriedade do jitter é parâmetro, não chamada interna.** `delay_for(attempt, random_value=...)` recebe o sorteio de fora. Uma política de reconexão que não pode ser reproduzida num teste é uma política que ninguém consegue auditar depois de um incidente.
+
+**O jitter só reduz o atraso.** Nunca ultrapassa o teto configurado. Estourar o máximo por causa de sorteio seria surpresa desnecessária justamente durante uma queda.
+
+**`ReconnectTracker.reset()` é explícito.** Só deve ser chamado depois de a conexão provar que funciona — tipicamente após o primeiro snapshot aplicado. Zerar já na conexão faria uma queda em laço parecer eternamente a primeira tentativa, e o backoff nunca escalaria.
+
+**O relógio do rate limiter é injetado.** Um limitador que só pode ser testado esperando de verdade não é testado. O balde também tolera relógio andando para trás: realinha a referência em vez de repor tokens indevidamente.
+
+**Rate limit local é preventivo, não substituto.** Ser bloqueado pela venue custa muito mais do que esperar localmente — costuma vir com banimento temporário de IP, e nesse intervalo o book inteiro para de atualizar.
+
+**Saúde olha o estado atual, não o histórico.** `ConnectorMetrics.is_healthy` depende de `ConnectorState`, não dos contadores. Um gap resolvido por resync há uma hora não deve manter o conector marcado como doente para sempre.
+
+**`snapshot_for_pricing` devolve snapshot e veredito juntos.** Livro não pronto ou velho demais devolve `None` com o motivo. Quem chama não reimplementa a decisão e não tem como esquecer de checá-la.
+
+**Reconexão obriga resync.** `mark_disconnected` invalida o livro: mensagens perdidas enquanto o socket esteve fora não têm como ser recuperadas, e o livro local deixou de refletir a venue.
 
 ---
 
@@ -1602,9 +1647,13 @@ Lógica pura em `backend/app/crypto_arbitrage/market_data/`, sem rede: `local_bo
 
 Tradução dos formatos públicos para o domínio, em `backend/app/crypto_arbitrage/connectors/`, sem rede. Formatos revalidados na documentação oficial conforme a seção 29. Detalhes na seção 5, incluindo dois achados que alteraram o planejamento: a Bybit não documenta continuidade de sequência, e o checksum da OKX foi depreciado em 23/06/2026.
 
-**19C — transporte.** Cliente REST, WebSocket, conexão, ping/pong, reconexão com backoff e jitter, rate limit, contadores de gap e reconnect, health por conector. É o incremento que finalmente toca a rede.
+**19C1 — orquestração de stream. CONCLUÍDA em 02/08/2026.**
 
-Aceitação da fase completa: três books normalizados, stale bloqueado e testes por fixtures. Os dois primeiros critérios já estão satisfeitos pelo 19B; falta o transporte.
+Contratos de transporte, backoff com jitter, rate limit, métricas e o `BookStreamManager` que junta tudo. Ainda sem rede. Detalhes na seção 5.
+
+**19C2 — transporte concreto.** Cliente REST com `httpx` e WebSocket com `websockets`, ambos já no `requirements.txt`: a fase não acrescenta dependência. Inclui ping/pong, laço de reconexão e o fluxo documentado de sincronização inicial de cada venue. É o incremento que finalmente toca a rede, e onde entram testes de integração `opt-in`, marcados para não rodar por padrão — a seção 28 exige que os testes padrão não dependam de internet.
+
+Aceitação da fase completa: três books normalizados, stale bloqueado e testes por fixtures. Os três critérios já estão satisfeitos; o 19C2 acrescenta o transporte real.
 
 ### Fase 20 — scanner CEX-CEX Paper
 
