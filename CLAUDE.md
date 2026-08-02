@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. Os transportes existem, mas nada os aciona: não há roteador, job de scheduler nem endpoint. A próxima fase é a 20.
+> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. A Fase 20A tambem esta pronta. Nada disso esta plugado na aplicacao: nao ha roteador, job de scheduler nem endpoint. O proximo incremento e o 20B, que expoe o scanner.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,7 +88,7 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-19c2-transport
+feature/phase-20a-cex-cex-scanner
 ```
 
 As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
@@ -122,13 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-912 passed, 2 warnings in 62.77s
+939 passed, 2 warnings in 43.46s
 git diff --check: aprovado
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2, 939 com a 20A.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -137,7 +137,7 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 912.
+O total esperado permanece 939.
 
 ### Teste instável conhecido
 
@@ -819,6 +819,42 @@ A ordem correta é o inverso:
 ```
 
 Assim eles existem e ficam documentados sem violar a regra da seção 28, que exige que a suíte padrão não dependa de internet.
+
+### 20A — scanner CEX-CEX Paper
+
+Implementada em 02/08/2026. Motor de lucratividade e scanner espacial entre venues, em `backend/app/crypto_arbitrage/opportunities/`. Lógica pura. 912 testes antes, 939 depois.
+
+```text
+opportunities/profitability.py   CostModel, ProfitBreakdown,
+                                 compute_breakdown, meets_thresholds,
+                                 resolve_taker_rates
+opportunities/cex_cex.py         CexCexScanner, ScanReport,
+                                 ScoredOpportunity, RejectedRoute
+```
+
+#### Decisões que valem conhecer
+
+**Pares ordenados, não combinações.** Comprar na A e vender na B é uma oportunidade diferente de comprar na B e vender na A — profundidades e custos são próprios de cada direção. O scanner avalia as duas e rejeita a que não fecha, registrando o motivo.
+
+**Toda rejeição carrega motivo e estágio.** `RejectedRoute` marca `freshness`, `depth`, `fees`, `profitability` ou `modelling`. "Não achei nada" é resposta inútil quando se investiga por que o sistema ficou parado a manhã inteira; "book da OKX stale há 4s" e "taxa da Bybit desconhecida" levam a ações diferentes.
+
+**Frescor é filtrado antes de qualquer cálculo.** Não adianta calcular VWAP de book que seria rejeitado no fim, e a ordem deixa a invariante 14 evidente no código.
+
+**Reservas incidem sobre o notional, não sobre o lucro.** `slippage_ratio` e `safety_buffer_ratio` multiplicam o valor negociado. O risco de execução acompanha o tamanho da posição, não o do ganho projetado — amarrar reserva ao lucro esperado faria a proteção encolher justamente quando a margem é fina.
+
+**Taker nas duas pontas por padrão.** `resolve_taker_rates` não considera maker: contar com maker exige repousar ordem no livro, e o preço pode sumir antes do fill. É a hipótese conservadora.
+
+**`ProfitBreakdown` guarda cada parcela.** VWAPs, taxas por perna, reserva de slippage, buffer, lucro e ROI. Guardar só o total impediria responder depois por que uma oportunidade foi descartada, ou por que o realizado divergiu do esperado.
+
+Nota sobre o encaixe com a Fase 18: `Opportunity` tem uma única reserva (`safety_buffer`). O scanner soma slippage e buffer operacional ali, e a separação detalhada fica no `ProfitBreakdown` anexo ao `ScoredOpportunity`. Se um dia a separação precisar viajar junto do modelo, é o `Opportunity` que muda.
+
+**Nada disso executa.** As oportunidades nascem com `RiskStatus.BLOCKED`, `is_executable` falso, e o payload declara todas as flags financeiras como falsas.
+
+#### O que a 20A ainda não faz
+
+Falta o **20B**: expor o scanner por API e no dashboard, e alimentá-lo com books reais vindos do `BookSynchronizer`. Até lá o `crypto_arbitrage` segue biblioteca pura, sem roteador, job ou endpoint.
+
+Também ficam para depois, por dependerem de conta privada ou de execução: taxas efetivas por conta em vez de tabela configurada (Fase 25), reserva de saldo e inventário (seção 16), e qualquer forma de execução (Fases 26 e 27).
 
 ---
 
