@@ -74,6 +74,28 @@ class BybitSpotAdapter:
     venue_id = "BYBIT"
     sequence_mode = SequenceMode.MONOTONIC
     market_type = MarketType.SPOT
+    rest_base_url = "https://api.bybit.com"
+
+    def instrument_id_for(self, pair: Any) -> str:
+        """`BTC/USDT` vira `BTCUSDT` na Bybit."""
+
+        return (
+            f"{pair.base_asset}{pair.quote_asset}"
+        ).upper()
+
+    def depth_request(
+        self,
+        instrument_id: str,
+        depth: int,
+    ) -> tuple[str, dict[str, Any]]:
+        return (
+            f"{self.rest_base_url}/v5/market/orderbook",
+            {
+                "category": "spot",
+                "symbol": str(instrument_id).upper(),
+                "limit": int(depth),
+            },
+        )
 
     def parse_instruments(
         self,

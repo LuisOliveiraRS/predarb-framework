@@ -98,6 +98,7 @@ from app.paper.shadow_execution_runtime import (
 )
 from app.scheduler.scheduler import scheduler_service
 from app.scheduler.tasks import (
+    crypto_scanner_background_task,
     market_update_task,
     real_opportunity_background_task,
     shadow_runtime_task,
@@ -243,6 +244,20 @@ async def lifespan(app: FastAPI):
 
                 app.state.lifecycle[
                     "real_opportunity_background_collector"
+                ] = True
+
+            if settings.CRYPTO_SCANNER_ENABLED:
+                scheduler_service.add_job(
+                    crypto_scanner_background_task,
+                    seconds=(
+                        settings.CRYPTO_SCANNER_INTERVAL_SECONDS
+                    ),
+                    job_id="crypto_scanner_background_task",
+                    replace_existing=True,
+                )
+
+                app.state.lifecycle[
+                    "crypto_scanner_collector"
                 ] = True
 
             if (

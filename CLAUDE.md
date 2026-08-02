@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. A Fase 20A tambem esta pronta. Nada disso esta plugado na aplicacao: nao ha roteador, job de scheduler nem endpoint. O proximo incremento e o 20B, que expoe o scanner.
+> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. As Fases 20A e 20B tambem estao prontas. O coletor cripto ja tem job de scheduler, desligado por default; falta apenas expor por API e dashboard, no 20C.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,7 +88,7 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-20a-cex-cex-scanner
+feature/phase-20b-crypto-collector
 ```
 
 As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
@@ -122,13 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-939 passed, 2 warnings in 43.46s
+965 passed, 10 deselected, 2 warnings in 95.36s
 git diff --check: aprovado
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2, 939 com a 20A.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2, 939 com a 20A, 965 com a 20B. Mais 10 de integracao, fora da suite padrao.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -137,7 +137,7 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 939.
+O total esperado permanece 965, com 10 deselected.
 
 ### Teste instável conhecido
 
@@ -855,6 +855,135 @@ Nota sobre o encaixe com a Fase 18: `Opportunity` tem uma única reserva (`safet
 Falta o **20B**: expor o scanner por API e no dashboard, e alimentá-lo com books reais vindos do `BookSynchronizer`. Até lá o `crypto_arbitrage` segue biblioteca pura, sem roteador, job ou endpoint.
 
 Também ficam para depois, por dependerem de conta privada ou de execução: taxas efetivas por conta em vez de tabela configurada (Fase 25), reserva de saldo e inventário (seção 16), e qualquer forma de execução (Fases 26 e 27).
+
+### Fumaça de integração contra as venues reais
+
+Adicionada em 02/08/2026, em `backend/tests/test_integration_venue_smoke.py`.
+
+Motivo: as Fases 18 a 20A foram construídas sobre fixtures escritas a partir da documentação. Nenhuma linha daquele código tinha visto resposta real de venue. Documentação e realidade divergem em detalhes que quebram parser, e o custo de descobrir isso cresce a cada camada empilhada em cima.
+
+Todos os testes estão marcados com `integration` e ficam **fora da suíte padrão**. Somente endpoints públicos: nenhuma credencial, nenhuma chave, nenhuma ordem.
+
+```powershell
+.venv\Scripts\python.exe -m pytest -m integration -v
+```
+
+Resultado da primeira execução, **10/10 em ~32s, sem exigir nenhum ajuste nos adaptadores**:
+
+```text
+REST        Binance, OKX e Bybit: instrumentos e book parseiam,
+            livro monta, VWAP calcula, bid < ask.
+            Nenhum instrumento descartado por filtro ausente.
+
+WebSocket   Binance: depthUpdate reconhecido; sincronizador segue
+                     em BUFFERING, correto, porque a Binance nao
+                     empurra snapshot e depende do REST.
+            OKX:     empurra snapshot na inscricao -> SYNCED.
+            Bybit:   empurra snapshot na inscricao -> SYNCED,
+                     deltas aplicados, livro nao cruzado.
+```
+
+#### Medição pendente: o `u` da Bybit incrementa de 1
+
+Um diagnóstico à parte, sobre 39 mensagens de `orderbook.50.BTCUSDT`, mediu os saltos do campo `u`:
+
+```text
+saltos de u:   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+todos == 1:    True
+algum == 0:    False
+algum > 1:     False
+```
+
+Isso contradiz parcialmente a conclusão da 19B, que escolheu `MONOTONIC` por a documentação não prometer incremento de 1. Na prática ela incrementa.
+
+Mais relevante: as duas exceções que a documentação descreve **já são tratadas antes da validação de sequência**.
+
+| Exceção documentada | Onde já é tratada |
+|---|---|
+| `u == 1` (reinício de serviço) | O adaptador converte em `SNAPSHOT` |
+| Mesmo `u` reenviado (nível 1 sem mudança) | `final <= last` → ignorado como replay |
+
+Ou seja, `STRICT_INCREMENT` provavelmente daria à Bybit detecção real de gap — que hoje ela não tem — sem os alarmes falsos que motivaram `MONOTONIC`.
+
+**Decisão em 02/08/2026: manter `MONOTONIC` por ora.** A amostra é pequena (39 mensagens, um par, trinta segundos), e a Bybit funciona hoje com as demais proteções: snapshot novo obriga reset, `u == 1` obriga reset, e book cruzado levanta `CorruptedBookError`.
+
+Ao revisitar, pesar a assimetria dos erros:
+
+- **falso positivo** (resync desnecessário) custa uma busca de snapshot; é visível e recuperável;
+- **falso negativo** (gap não detectado) corrompe o livro em silêncio e faz o scanner produzir oportunidade fantasma.
+
+A filosofia fail-closed do projeto prefere a falha visível, o que favorece a troca. Falta evidência de produção sobre regimes de mercado com mais volume. A mudança é uma linha em `connectors/bybit/spot_adapter.py`.
+
+### 20B — coletor do scanner cripto
+
+Implementada em 02/08/2026. 939 testes antes, 965 depois. **É aqui que o `crypto_arbitrage` deixa de ser biblioteca pura**: passa a ter job de scheduler e configuração própria.
+
+```text
+services/book_source.py       RestBookSource
+services/scanner_service.py   CryptoScannerService
+services/factory.py           build_scanner_service, get_scanner_service
+connectors/*/spot_adapter.py  +instrument_id_for, +depth_request
+core/settings.py              14 variaveis CRYPTO_SCANNER_*
+scheduler/tasks.py            +crypto_scanner_background_task
+core/application.py           registro condicional do job
+```
+
+#### A decisão mais importante: REST, não WebSocket, em produção
+
+O WebSocket está implementado, testado e validado contra as venues reais. Mesmo assim o coletor usa **REST periódico**.
+
+O motivo é a hospedagem. A seção 4 registra que o processo no Render Free dorme e reinicia. Socket persistente em processo que hiberna significa reconexão constante, e cada reconexão obriga resync completo — o livro nunca alcança estado estável, e o custo é maior que o benefício.
+
+A seção 14 afirma que REST periódico não serve como hot path de arbitragem, e **isso continua verdade para execução**. A Fase 20 é Paper: o objetivo é descobrir se existe ineficiência líquida, não capturá-la. Latência de polling não impede essa resposta, e nenhuma decisão de execução depende dela.
+
+Quando houver hospedagem que não hiberne, `BookSynchronizer` e `WebsocketsTransport` já estão prontos para assumir sem mudança de domínio.
+
+#### Outras decisões
+
+**Falha parcial não derruba o ciclo.** Uma venue fora do ar some do conjunto e fica registrada em `last_venue_errors`; as demais continuam sendo comparadas. "O scanner não achou nada" e "a OKX está fora" pedem ações diferentes.
+
+**Ler não coleta.** `snapshot()` devolve o último relatório sem disparar coleta, com teste específico provando que chamadas repetidas não tocam as venues. É a lição da Fase 17: coleta por acesso deixa a carga upstream proporcional ao tráfego do dashboard, não ao intervalo configurado.
+
+**Single-flight com `Lock` de thread, não `asyncio.Lock`.** O BackgroundScheduler roda o job em thread própria, e a seção 28 proíbe compartilhar lock de asyncio entre loops.
+
+**O book de REST passa pelo `LocalOrderBook`.** Em vez de montar o snapshot direto, `RestBookSource` aplica o payload num livro local. Assim o dado de REST recebe as mesmas validações do dado de stream — ordenação, mercado cruzado, níveis positivos. Um book cruzado vindo da venue levanta erro em vez de virar oportunidade.
+
+**Taxas vêm de configuração versionada.** `CRYPTO_SCANNER_TAKER_FEES` no formato `VENUE:taxa`. A seção 9 proíbe hardcode, e a Fase 25 é que traz taxa efetiva por conta. Com o scanner ligado, **venue sem taxa configurada impede o boot** — é a invariante 15 aplicada na validação de settings.
+
+**A fábrica constrói sob demanda.** Importar o módulo não abre cliente HTTP nem lê configuração. O boot deve falhar por validação de `settings`, não por efeito colateral de import.
+
+#### Configuração da Fase 20B
+
+Defaults, todos seguros:
+
+```text
+CRYPTO_SCANNER_ENABLED=false
+CRYPTO_SCANNER_INTERVAL_SECONDS=60
+CRYPTO_SCANNER_VENUES=BINANCE,OKX,BYBIT
+CRYPTO_SCANNER_BASE_ASSET=BTC
+CRYPTO_SCANNER_QUOTE_ASSET=USDT
+CRYPTO_SCANNER_QUANTITY=0.01
+CRYPTO_SCANNER_DEPTH=50
+CRYPTO_SCANNER_MAX_BOOK_AGE_MS=5000
+CRYPTO_SCANNER_SLIPPAGE_RATIO=0.0005
+CRYPTO_SCANNER_SAFETY_BUFFER_RATIO=0.0005
+CRYPTO_SCANNER_MINIMUM_NET_PROFIT=0
+CRYPTO_SCANNER_MINIMUM_ROI=0
+CRYPTO_SCANNER_TAKER_FEES=BINANCE:0.001,OKX:0.001,BYBIT:0.001
+CRYPTO_SCANNER_REQUEST_TIMEOUT_SECONDS=10
+CRYPTO_SCANNER_RATE_LIMIT_CAPACITY=10
+CRYPTO_SCANNER_RATE_LIMIT_REFILL_PER_SECOND=5
+```
+
+Valores decimais ficam como `str` de propósito: o domínio cripto recusa `float` em valor financeiro.
+
+Validações fail-closed no boot: intervalo 30–3600; profundidade 1–500; idade de book 100–600000 ms; ratios 0–0.25; ROI 0–1; taxas 0–0.25; base e quote diferentes; e, com o scanner ligado, ao menos **duas** venues (arbitragem espacial compara venues) e taxa configurada para **todas** elas.
+
+O job só é registrado quando `SCHEDULER_ENABLED` e `CRYPTO_SCANNER_ENABLED` são verdadeiros.
+
+#### O que falta
+
+O **20C**: expor snapshot e status por API e no dashboard. Recomendação registrada: o endpoint deve **nascer exigindo `require_dashboard_user`**. O `/opportunities` da Fase 14 nasceu público e virou um no-op de segurança quando a proteção foi adicionada depois — abrir depois é trivial, fechar depois provou ser caro.
 
 ---
 

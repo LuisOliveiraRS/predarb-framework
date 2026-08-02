@@ -50,6 +50,28 @@ class Settings(BaseSettings):
     REAL_OPPORTUNITY_SNAPSHOT_MAX_AGE_MULTIPLIER: int = 3
     REAL_OPPORTUNITY_FORCE_REFRESH_COOLDOWN_SECONDS: int = 30
 
+    # Fase 20B - coletor do scanner cripto CEX-CEX.
+    # Valores Decimal ficam como str de proposito: o dominio
+    # cripto recusa float em valor financeiro (secao 28).
+    CRYPTO_SCANNER_ENABLED: bool = False
+    CRYPTO_SCANNER_INTERVAL_SECONDS: int = 60
+    CRYPTO_SCANNER_VENUES: str = "BINANCE,OKX,BYBIT"
+    CRYPTO_SCANNER_BASE_ASSET: str = "BTC"
+    CRYPTO_SCANNER_QUOTE_ASSET: str = "USDT"
+    CRYPTO_SCANNER_QUANTITY: str = "0.01"
+    CRYPTO_SCANNER_DEPTH: int = 50
+    CRYPTO_SCANNER_MAX_BOOK_AGE_MS: int = 5000
+    CRYPTO_SCANNER_SLIPPAGE_RATIO: str = "0.0005"
+    CRYPTO_SCANNER_SAFETY_BUFFER_RATIO: str = "0.0005"
+    CRYPTO_SCANNER_MINIMUM_NET_PROFIT: str = "0"
+    CRYPTO_SCANNER_MINIMUM_ROI: str = "0"
+    CRYPTO_SCANNER_TAKER_FEES: str = (
+        "BINANCE:0.001,OKX:0.001,BYBIT:0.001"
+    )
+    CRYPTO_SCANNER_REQUEST_TIMEOUT_SECONDS: int = 10
+    CRYPTO_SCANNER_RATE_LIMIT_CAPACITY: int = 10
+    CRYPTO_SCANNER_RATE_LIMIT_REFILL_PER_SECOND: str = "5"
+
     # Ciclo de vida operacional
     MOCK_CONNECTOR_ENABLED: bool = True
     HYPERLIQUID_CONNECTOR_ENABLED: bool = True
@@ -327,6 +349,8 @@ class Settings(BaseSettings):
                     "SUPABASE_URL deve utilizar HTTPS "
                     "fora do ambiente DEBUG."
                 )
+
+        self._validate_crypto_scanner()
 
         self.PUBLIC_CORS_ALLOWED_ORIGINS = str(
             self.PUBLIC_CORS_ALLOWED_ORIGINS or ""
@@ -655,6 +679,226 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    def _validate_crypto_scanner(self) -> None:
+        """Valida a Fase 20B, fail-closed.
+
+        Configuracao invalida impede o boot em vez de degradar em
+        silencio: um scanner rodando com parametro errado produz
+        oportunidade fantasma, que e pior do que scanner parado.
+        """
+
+        self.CRYPTO_SCANNER_VENUES = str(
+            self.CRYPTO_SCANNER_VENUES or ""
+        ).strip().upper()
+
+        venues = [
+            item.strip()
+            for item in self.CRYPTO_SCANNER_VENUES.split(",")
+            if item.strip()
+        ]
+
+        if self.CRYPTO_SCANNER_ENABLED and len(venues) < 2:
+            raise ValueError(
+                "CRYPTO_SCANNER_ENABLED exige ao menos duas "
+                "venues: arbitragem espacial compara venues."
+            )
+
+        if not (
+            30
+            <= self.CRYPTO_SCANNER_INTERVAL_SECONDS
+            <= 3600
+        ):
+            raise ValueError(
+                "CRYPTO_SCANNER_INTERVAL_SECONDS deve ficar "
+                "entre 30 e 3600."
+            )
+
+        if not 1 <= self.CRYPTO_SCANNER_DEPTH <= 500:
+            raise ValueError(
+                "CRYPTO_SCANNER_DEPTH deve ficar entre 1 e 500."
+            )
+
+        if not (
+            100
+            <= self.CRYPTO_SCANNER_MAX_BOOK_AGE_MS
+            <= 600000
+        ):
+            raise ValueError(
+                "CRYPTO_SCANNER_MAX_BOOK_AGE_MS deve ficar "
+                "entre 100 e 600000."
+            )
+
+        if self.CRYPTO_SCANNER_REQUEST_TIMEOUT_SECONDS <= 0:
+            raise ValueError(
+                "CRYPTO_SCANNER_REQUEST_TIMEOUT_SECONDS deve "
+                "ser positivo."
+            )
+
+        if self.CRYPTO_SCANNER_RATE_LIMIT_CAPACITY <= 0:
+            raise ValueError(
+                "CRYPTO_SCANNER_RATE_LIMIT_CAPACITY deve ser "
+                "positivo."
+            )
+
+        for name in (
+            "CRYPTO_SCANNER_BASE_ASSET",
+            "CRYPTO_SCANNER_QUOTE_ASSET",
+        ):
+            value = str(
+                getattr(self, name) or ""
+            ).strip().upper()
+
+            if not value:
+                raise ValueError(f"{name} nao pode ficar vazio.")
+
+            setattr(self, name, value)
+
+        if (
+            self.CRYPTO_SCANNER_BASE_ASSET
+            == self.CRYPTO_SCANNER_QUOTE_ASSET
+        ):
+            raise ValueError(
+                "CRYPTO_SCANNER_BASE_ASSET e "
+                "CRYPTO_SCANNER_QUOTE_ASSET devem diferir."
+            )
+
+        self._validate_crypto_decimals()
+        self._validate_crypto_fees(venues)
+
+    def _validate_crypto_decimals(self) -> None:
+        from decimal import Decimal, InvalidOperation
+
+        limits = {
+            "CRYPTO_SCANNER_QUANTITY": (
+                Decimal("0"),
+                None,
+                False,
+            ),
+            "CRYPTO_SCANNER_SLIPPAGE_RATIO": (
+                Decimal("0"),
+                Decimal("0.25"),
+                True,
+            ),
+            "CRYPTO_SCANNER_SAFETY_BUFFER_RATIO": (
+                Decimal("0"),
+                Decimal("0.25"),
+                True,
+            ),
+            "CRYPTO_SCANNER_MINIMUM_NET_PROFIT": (
+                Decimal("0"),
+                None,
+                True,
+            ),
+            "CRYPTO_SCANNER_MINIMUM_ROI": (
+                Decimal("0"),
+                Decimal("1"),
+                True,
+            ),
+            "CRYPTO_SCANNER_RATE_LIMIT_REFILL_PER_SECOND": (
+                Decimal("0"),
+                None,
+                False,
+            ),
+        }
+
+        for name, (
+            minimum,
+            maximum,
+            allow_equal,
+        ) in limits.items():
+            raw = str(getattr(self, name) or "").strip()
+
+            try:
+                value = Decimal(raw)
+            except (InvalidOperation, ValueError) as exc:
+                raise ValueError(
+                    f"{name} nao e um numero decimal valido."
+                ) from exc
+
+            if not value.is_finite():
+                raise ValueError(f"{name} deve ser finito.")
+
+            if allow_equal and value < minimum:
+                raise ValueError(
+                    f"{name} nao pode ser menor que {minimum}."
+                )
+
+            if not allow_equal and value <= minimum:
+                raise ValueError(
+                    f"{name} deve ser maior que {minimum}."
+                )
+
+            if maximum is not None and value > maximum:
+                raise ValueError(
+                    f"{name} nao pode ser maior que {maximum}."
+                )
+
+            setattr(self, name, raw)
+
+    def _validate_crypto_fees(
+        self,
+        venues: list[str],
+    ) -> None:
+        """Taxas vem de configuracao, nunca hardcoded.
+
+        Secao 9: taxas variam por conta, tier, produto, par e
+        regiao. Aqui elas sao versionadas e conservadoras ate a
+        Fase 25 trazer a taxa efetiva por conta.
+        """
+
+        from decimal import Decimal, InvalidOperation
+
+        self.CRYPTO_SCANNER_TAKER_FEES = str(
+            self.CRYPTO_SCANNER_TAKER_FEES or ""
+        ).strip().upper()
+
+        parsed: dict[str, str] = {}
+
+        for entry in self.CRYPTO_SCANNER_TAKER_FEES.split(","):
+            item = entry.strip()
+
+            if not item:
+                continue
+
+            if ":" not in item:
+                raise ValueError(
+                    "CRYPTO_SCANNER_TAKER_FEES usa o formato "
+                    "VENUE:taxa separado por virgula."
+                )
+
+            venue_id, _, raw_rate = item.partition(":")
+            venue_id = venue_id.strip()
+
+            try:
+                rate = Decimal(raw_rate.strip())
+            except (InvalidOperation, ValueError) as exc:
+                raise ValueError(
+                    f"Taxa invalida para {venue_id} em "
+                    "CRYPTO_SCANNER_TAKER_FEES."
+                ) from exc
+
+            if not Decimal("0") <= rate <= Decimal("0.25"):
+                raise ValueError(
+                    f"Taxa de {venue_id} fora do intervalo "
+                    "aceitavel (0 a 0.25)."
+                )
+
+            parsed[venue_id] = raw_rate.strip()
+
+        if not self.CRYPTO_SCANNER_ENABLED:
+            return
+
+        faltando = [
+            venue for venue in venues if venue not in parsed
+        ]
+
+        if faltando:
+            raise ValueError(
+                "CRYPTO_SCANNER_TAKER_FEES nao cobre "
+                f"{', '.join(faltando)}. Taxa desconhecida "
+                "invalida a oportunidade (invariante 15)."
+            )
 
 
 settings = Settings()

@@ -258,3 +258,29 @@ def real_opportunity_background_task(
     )
 
     return result
+
+
+def crypto_scanner_background_task() -> dict[str, Any]:
+    """Executa um ciclo do scanner cripto CEX-CEX.
+
+    Somente leitura. O servico e construido sob demanda para que
+    a importacao deste modulo nao abra cliente HTTP.
+    """
+
+    from app.crypto_arbitrage.services.factory import (
+        get_scanner_service,
+    )
+
+    logger.info("Iniciando ciclo do scanner cripto.")
+
+    result = get_scanner_service().run_task()
+
+    logger.info(
+        "Ciclo do scanner cripto concluido: status=%s; "
+        "venues=%s; oportunidades=%s.",
+        result.get("last_status"),
+        result.get("last_venues_collected", 0),
+        result.get("last_opportunities", 0),
+    )
+
+    return result
