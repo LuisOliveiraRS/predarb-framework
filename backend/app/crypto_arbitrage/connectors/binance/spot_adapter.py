@@ -87,6 +87,27 @@ class BinanceSpotAdapter:
     venue_id = "BINANCE"
     sequence_mode = SequenceMode.RANGE
     market_type = MarketType.SPOT
+    rest_base_url = "https://api.binance.com"
+
+    def instrument_id_for(self, pair: Any) -> str:
+        """`BTC/USDT` vira `BTCUSDT` na Binance."""
+
+        return (
+            f"{pair.base_asset}{pair.quote_asset}"
+        ).upper()
+
+    def depth_request(
+        self,
+        instrument_id: str,
+        depth: int,
+    ) -> tuple[str, dict[str, Any]]:
+        return (
+            f"{self.rest_base_url}/api/v3/depth",
+            {
+                "symbol": str(instrument_id).upper(),
+                "limit": int(depth),
+            },
+        )
 
     def parse_instruments(
         self,

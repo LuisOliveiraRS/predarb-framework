@@ -75,6 +75,27 @@ class OkxSpotAdapter:
     venue_id = "OKX"
     sequence_mode = SequenceMode.PREVIOUS_MATCH
     market_type = MarketType.SPOT
+    rest_base_url = "https://www.okx.com"
+
+    def instrument_id_for(self, pair: Any) -> str:
+        """`BTC/USDT` vira `BTC-USDT` na OKX."""
+
+        return (
+            f"{pair.base_asset}-{pair.quote_asset}"
+        ).upper()
+
+    def depth_request(
+        self,
+        instrument_id: str,
+        depth: int,
+    ) -> tuple[str, dict[str, Any]]:
+        return (
+            f"{self.rest_base_url}/api/v5/market/books",
+            {
+                "instId": str(instrument_id).upper(),
+                "sz": str(int(depth)),
+            },
+        )
 
     def parse_instruments(
         self,
