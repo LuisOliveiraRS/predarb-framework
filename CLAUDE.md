@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. As Fases 20A e 20B tambem estao prontas. O coletor cripto ja tem job de scheduler, desligado por default; falta apenas expor por API e dashboard, no 20C.
+> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. As Fases 20A, 20B e 20C tambem estao prontas. O coletor cripto tem job de scheduler e API, ambos desligados por default; falta apenas o painel no dashboard, no 20D.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,7 +88,7 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-20b-crypto-collector
+feature/phase-20c-crypto-api
 ```
 
 As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
@@ -122,13 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-965 passed, 10 deselected, 2 warnings in 95.36s
+981 passed, 10 deselected, 2 warnings in 73.40s
 git diff --check: aprovado
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2, 939 com a 20A, 965 com a 20B. Mais 10 de integracao, fora da suite padrao.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2, 939 com a 20A, 965 com a 20B, 981 com a 20C. Mais 10 de integracao, fora da suite padrao.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -137,7 +137,7 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 965, com 10 deselected.
+O total esperado permanece 981, com 10 deselected.
 
 ### Teste instável conhecido
 
@@ -983,7 +983,33 @@ O job só é registrado quando `SCHEDULER_ENABLED` e `CRYPTO_SCANNER_ENABLED` s�
 
 #### O que falta
 
-O **20C**: expor snapshot e status por API e no dashboard. Recomendação registrada: o endpoint deve **nascer exigindo `require_dashboard_user`**. O `/opportunities` da Fase 14 nasceu público e virou um no-op de segurança quando a proteção foi adicionada depois — abrir depois é trivial, fechar depois provou ser caro.
+O **20C** (API) foi entregue logo em seguida; falta o **20D**, o painel no dashboard.
+
+### 20C — API do scanner cripto
+
+Implementada em 02/08/2026. 965 testes antes, 981 depois.
+
+```text
+api/routers/crypto_scanner.py   GET /crypto/scanner/snapshot
+                                GET /crypto/scanner/status
+core/application.py             registro do roteador
+```
+
+**Os endpoints nascem exigindo `require_dashboard_user`**, e a dependência fica **no roteador**, não rota a rota — assim endpoints futuros nascem protegidos por construção, sem depender de alguém lembrar.
+
+A razão está registrada porque custou caro aprender: o `/real-markets/radar/opportunities` da Fase 14 nasceu público, e quando a proteção veio na Fase 17 ela virou um no-op em produção, porque a flag que a ativava estava desligada. Fechar depois consumiu uma manhã inteira; abrir depois é trivial.
+
+**Coletor desligado devolve 200 com `status: DISABLED`, não erro.** Desligado é configuração válida, e quem consome precisa distinguir "não configurado" de "configurado e sem oportunidade". Há teste garantindo que, nesse estado, o serviço **nem chega a ser construído** — e outro garantindo que a autenticação continua exigida mesmo desligado, para não vazar estado de configuração.
+
+Nenhum endpoint dispara coleta: todos leem o snapshot em memória.
+
+#### Duas armadilhas de teste encontradas aqui
+
+Valem registro porque vão reaparecer.
+
+**O `.env` local liga a autenticação.** `AUTH_ENABLED` e `AUTH_REQUIRED_FOR_DASHBOARD` estão verdadeiros no `.env` de desenvolvimento, então testes que esperam 200 falham se não desligarem a exigência explicitamente. Teste que depende de configuração de ambiente passa ou falha conforme a máquina. Cada teste deve declarar o que precisa, e os fixtures `client` e `enforcing_client` fazem isso.
+
+**`app.routes` não achata mais rotas incluídas.** O FastAPI 0.139 embrulha roteadores num `_IncludedRouter`, então varrer `app.routes` procurando caminho não encontra nada — mesmo com a rota funcionando. Para verificar registro, inspecione `router.routes` ou faça uma requisição e confira que não é 404.
 
 ---
 

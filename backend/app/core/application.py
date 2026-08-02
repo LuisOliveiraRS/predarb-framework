@@ -61,6 +61,7 @@ from app.api.routers.polymarket_read_only import router as polymarket_read_only_
 from app.api.routers.market_matching import router as market_matching_router
 from app.api.routers.economic_opportunities import router as economic_opportunities_router
 from app.api.routers.real_opportunity_radar import router as real_opportunity_radar_router
+from app.api.routers.crypto_scanner import router as crypto_scanner_router
 from app.api.routers.shadow_execution import router as shadow_execution_router
 from app.api.routers.shadow_execution_runtime import router as shadow_execution_runtime_router
 from app.api.routers.paper_certification_evidence_incident_runtime_dashboard import router as paper_certification_evidence_incident_runtime_dashboard_router
@@ -555,6 +556,7 @@ def create_app() -> FastAPI:
         market_matching_router,
         economic_opportunities_router,
         real_opportunity_radar_router,
+        crypto_scanner_router,
         shadow_execution_router,
         shadow_execution_runtime_router,
         paper_final_assurance_history_runtime_dashboard_router,
