@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. A Fase 18 está implementada e aprovada localmente, sem deploy — é domínio puro, sem endpoint. A próxima fase é a 19.
+> Estado: a Fase 17 está implantada e validada em produção. As Fases 18 e 19A estão implementadas e aprovadas localmente, sem deploy — são domínio e lógica pura, sem endpoint. O próximo incremento é o 19B.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,10 +88,10 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-18-crypto-domain
+feature/phase-19a-local-order-book
 ```
 
-As branches anteriores (`feature/phase-17-background-radar-collector` e `docs/phase-17-production-validation`) já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
+As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
 
 ### Base conhecida
 
@@ -122,13 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-752 passed, 2 warnings in 71.49s
+799 passed, 2 warnings in 30.11s
 git diff --check: aprovado
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Linha de base antes da Fase 18: 688 testes. A Fase 18 acrescentou 64.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a Fase 19A.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -137,7 +137,7 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 752.
+O total esperado permanece 799.
 
 Warnings conhecidos:
 
@@ -634,6 +634,43 @@ nenhum import de rede em crypto_arbitrage/
 float presente apenas em docstrings e na guarda que o recusa
 nenhuma flag financeira True em app/
 ```
+
+### 19A — fundação de market data
+
+Implementada em 02/08/2026. Primeiro incremento da Fase 19, em `backend/app/crypto_arbitrage/market_data/`. Lógica pura, sem rede: 752 testes antes, 799 depois.
+
+```text
+local_book.py   BookLevelChange, BookUpdate, SequenceMode,
+                BookStats, LocalOrderBook
+freshness.py    FreshnessPolicy, FreshnessVerdict,
+                is_usable_for_pricing, milliseconds_between
+latency.py      LatencyTracker
+```
+
+#### Decisões que valem conhecer
+
+**`SequenceMode` em vez de um parser por venue.** Cada venue numera updates de um jeito, mas a lógica de livro é a mesma. `BookUpdate` é neutro e carrega `first_update_id`, `final_update_id` e `previous_update_id`; o modo descreve *como* validar a continuidade:
+
+```text
+STRICT_INCREMENT   final == ultimo + 1
+RANGE              first <= ultimo + 1 <= final
+PREVIOUS_MATCH     previous == ultimo
+NONE               sem validacao, evitar
+```
+
+Os conectores da 19B traduzem seus payloads para esse formato. A escolha evita espalhar regra de sequência dentro da manutenção do book, e permitiu escrever a lógica antes de confirmar os formatos reais das três venues.
+
+**Ignorado é diferente de rejeitado.** Update anterior ao snapshot é descartado com `False` e contado em `ignored_stale_updates`: durante a sincronização inicial isso é esperado, não é defeito. Já um buraco na sequência levanta `SequenceGapError` e marca o livro para resync. Confundir os dois casos geraria alarme falso na largada ou, pior, silêncio diante de perda real de mensagem.
+
+**Book cruzado é corrupção, não oportunidade.** Se o melhor bid alcançar o melhor ask, `CorruptedBookError` é levantado e o livro exige resync. Um book local cruzado significa que a aplicação de deltas divergiu da venue — jamais que apareceu arbitragem. Corrigir localmente esconderia a divergência.
+
+**`is_ready` exige snapshot presente *e* ausência de resync pendente.** `to_snapshot` recusa livro não pronto, então nenhum book degradado alimenta cálculo de oportunidade por descuido.
+
+**O veredito de frescor carrega o motivo.** `FreshnessVerdict` devolve `is_fresh`, idade, limite e texto. "Por que esta oportunidade foi descartada" é a pergunta que se faz depois, e reconstruir isso a partir de um booleano é impossível.
+
+**Idade negativa não é dado novo.** Timestamp adiantado além de `max_clock_skew_ms` invalida o dado: não se sabe mais qual relógio mentiu. O `LatencyTracker` preserva amostras negativas em vez de zerá-las, porque skew de relógio é sintoma real e escondê-lo com `max(0, x)` apagaria a evidência.
+
+**Conector degradado bloqueia mesmo com book recente.** `is_usable_for_pricing` combina estado e frescor: idade baixa só prova que a última mensagem chegou há pouco, não que o livro reflete a venue.
 
 ---
 
@@ -1508,14 +1545,19 @@ Aceitação: testes unitários e flags financeiras falsas. **Aprovada** com 752 
 
 ### Fase 19 — Binance, OKX e Bybit públicos
 
-- instruments;
-- REST snapshot;
-- WebSocket;
-- book local;
-- sequence/gap/resync;
-- freshness/reconnect/rate limit/health.
+Dividida em três incrementos, porque a fase inteira num único PR não é revisável e contraria a regra 6 da seção 1.
 
-Aceitação: três books normalizados, stale bloqueado e testes por fixtures.
+**19A — fundação de market data. CONCLUÍDA em 02/08/2026.**
+
+Lógica pura em `backend/app/crypto_arbitrage/market_data/`, sem rede: `local_book.py`, `freshness.py` e `latency.py`. Detalhes na seção 5.
+
+**19B — REST e normalização.** `list_instruments` e snapshot inicial das três venues, traduzindo cada formato para `Instrument` e `OrderBookSnapshot`. Testes por fixture.
+
+Antes de implementar, revalidar os formatos reais na documentação oficial (seção 29). Os três diferem em pontos que importam: a Binance usa o intervalo `U`/`u` de update IDs, a OKX publica checksum CRC32 do book, e a Bybit distingue `u` de `seq`. Errar qualquer um produz gap fantasma ou book corrompido em silêncio.
+
+**19C — WebSocket e stream manager.** Conexão, ping/pong, reconexão com backoff e jitter, rate limit, contadores de gap e reconnect, health por conector.
+
+Aceitação da fase completa: três books normalizados, stale bloqueado e testes por fixtures.
 
 ### Fase 20 — scanner CEX-CEX Paper
 
