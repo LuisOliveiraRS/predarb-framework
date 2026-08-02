@@ -2,9 +2,11 @@
 
 > Coloque este arquivo na raiz de `C:\predarb-framework` para servir como contexto principal do Claude Code no VSCode.
 >
-> Data do contexto: 31/07/2026.
+> Data do contexto: 02/08/2026.
 >
-> Estado crítico: a Fase 17 está implementada, commitada e enviada ao `origin` no branch de feature, mas ainda **não** foi merjada nem implantada em produção.
+> Estado: a Fase 17 está implantada e validada em produção. A próxima fase é a 18.
+>
+> A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
 ---
 
@@ -86,8 +88,10 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-17-background-radar-collector
+docs/phase-17-production-validation
 ```
+
+A branch de implementação da Fase 17, `feature/phase-17-background-radar-collector`, já foi merjada e tagueada. A branch atual existe apenas para registrar a validação em produção e as correções de documentação posteriores. Confira sempre com `git status --short --branch` antes de confiar neste campo.
 
 ### Base conhecida
 
@@ -99,20 +103,19 @@ Esse commit corresponde ao merge da correção de isolamento do banco de observa
 
 ### Commits da Fase 17
 
-O trabalho da Fase 17 está protegido por commit. Não há mais alterações pendentes no working tree.
+A Fase 17 foi merjada na `main` pelo PR #16 e tagueada.
 
 ```text
-78d0fef feat: collect real opportunity radar in background
-        12 arquivos, +1537/-94
-        coletor, scheduler task, application, settings,
-        dashboard e testes de snapshot/freshness
+823d84f Merge pull request #16
+        tag phase-17-background-radar-collector
 
+0b649a3 chore: version the env template and document phase 16/17 settings
+f65d2ba docs: sync CLAUDE.md with real phase 17 state
 a556744 feat: throttle external radar force refresh and require auth
-        6 arquivos, +511/-2
-        cooldown de force_refresh e autenticação no /opportunities
+78d0fef feat: collect real opportunity radar in background
 ```
 
-Branch sincronizado com `origin/feature/phase-17-background-radar-collector` até o commit `78d0fef`. O commit de guardrails ainda **não** foi enviado — push, PR, merge, tag e deploy seguem exigindo autorização explícita.
+Total do PR: 16 arquivos, +3945/−94.
 
 O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: duplica a seção 30 deste documento e tende a divergir dela.
 
@@ -124,6 +127,15 @@ git diff --check: aprovado
 auditoria de flags financeiras: 12/12 False em 511 ocorrências
 varredura de segredos no diff: nenhum indício
 ```
+
+Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
+
+```powershell
+# 107 arquivos divididos em 4 lotes evitam importar tudo de uma vez
+Get-ChildItem tests\test_*.py | Sort-Object Name
+```
+
+O total esperado permanece 688.
 
 Warnings conhecidos:
 
@@ -153,6 +165,140 @@ Consequências:
 - memória e cache são locais ao processo;
 - persistência Supabase deve sobreviver aos reinícios;
 - não assumir coordenação distribuída entre múltiplos workers.
+
+Um reinício zera a memória: `history_points` volta a `0` e o snapshot volta a `WARMING_UP` até o primeiro ciclo do coletor. Isso é esperado. O histórico persistente é reidratado do banco dedicado.
+
+### Autenticação em produção — ATIVA desde 02/08/2026
+
+A autenticação da Fase 13B passou a ser **exigida** no ambiente do Render. Estado verificado em 02/08/2026:
+
+```text
+GET /auth/config          -> enabled=true  dashboard_required=true
+
+exigem credencial (401 sem sessao valida):
+    /dashboard/api/*                     inclui /status e /health do dashboard
+    /router/*
+    /real-markets/radar/opportunities
+    /auth/me
+
+publicos por projeto (200):
+    /dashboard   /login   /health
+    /real-markets/radar/snapshot
+    /real-markets/radar/collector/status
+    /docs   /openapi.json
+```
+
+Variáveis que ativam o comportamento, ambas necessárias:
+
+```text
+AUTH_ENABLED=true
+AUTH_REQUIRED_FOR_DASHBOARD=true
+```
+
+Rollback de qualquer etapa: `AUTH_REQUIRED_FOR_DASHBOARD=false` reabre o acesso preservando o resto; `AUTH_ENABLED=false` desliga o subsistema inteiro. Nenhum dos dois afeta o coletor da Fase 17, confirmado em produção.
+
+#### Como verificar — e como NÃO verificar
+
+Use `GET /auth/config`. Ele é público, não expõe segredo nenhum e devolve `enabled` e `dashboard_required` lidos direto do `settings`. Foi a ferramenta que resolveu o diagnóstico de 02/08/2026 e deve ser o primeiro comando de qualquer investigação de autenticação.
+
+**Não use `GET /dashboard` como evidência.** A rota HTML em `dashboard/router.py:39` não tem dependência de autenticação por projeto — serve apenas o shell, e os dados vêm de `/dashboard/api/*`, esses sim protegidos. `/dashboard` responde 200 com ou sem autenticação exigida. A versão anterior desta seção tratava esse 200 como sintoma do problema, o que é incorreto e induz a concluir erradamente que a ativação falhou.
+
+O teste válido de fechamento é `/dashboard/api/status` responder 401 sem credencial.
+
+#### Pré-requisitos de boot
+
+Validados em `settings.py:272-329`. Qualquer um faltando impede a aplicação de subir:
+
+- `SUPABASE_URL` preenchida e começando com `https://` fora de DEBUG;
+- `SUPABASE_PUBLISHABLE_KEY` preenchida (é a chave pública; a service-role nunca entra aqui);
+- `SUPABASE_JWT_AUDIENCE` não vazia, default `authenticated`;
+- `AUTH_COOKIE_SECURE=true` fora de DEBUG;
+- `SUPABASE_JWKS_CACHE_TTL_SECONDS` entre 60 e 600.
+
+Detalhe que custou tempo: esse bloco inteiro está dentro de `if self.AUTH_ENABLED:`. Com a flag falsa, `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` **nunca são checadas**. Um boot bem-sucedido com `AUTH_ENABLED=false` não diz absolutamente nada sobre a validade dessas variáveis.
+
+Um boot recusado por erro de validação **não derruba produção**: o Render mantém o deploy anterior servindo. Confirmado em 02/08/2026.
+
+#### Armadilha do prefixo NEXT_PUBLIC_
+
+O painel do Supabase exibe os snippets de configuração no formato do Next.js, com prefixo `NEXT_PUBLIC_`. Este backend é FastAPI e **não** usa prefixo: `settings.py:138-143` declara `SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)`.
+
+Consequências:
+
+- `case_sensitive=False` — maiúsculas/minúsculas não importam;
+- não há `env_prefix` — o nome é literal;
+- **`extra="ignore"` descarta em silêncio** qualquer variável cujo nome não corresponda a um campo declarado.
+
+Variáveis nomeadas `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` aparecem corretamente configuradas no painel do Render e chegam vazias ao processo, sem aviso algum. Os nomes corretos são `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY`. O mesmo vale para qualquer espaço invisível no nome da chave.
+
+Sintoma correspondente no boot:
+
+```text
+ValidationError: AUTH_ENABLED exige SUPABASE_URL.
+```
+
+#### Sobre o MFA
+
+`require_dashboard_user` chama `user.require_mfa()`, e `has_mfa` é `aal == "aal2"` (`auth/models.py:45`) — propriedade **da sessão**, não do cadastro. Ter o fator TOTP inscrito não basta: o login precisa efetivamente elevar a sessão a `aal2`.
+
+Não há risco de deadlock de inscrição. `mfa_router.py:18` usa `require_authenticated_user`, que apenas autentica e **não** exige MFA (`dependencies.py:139-148`). Uma sessão em `aal1` consegue acessar `/auth/mfa/*` para inscrever e verificar o fator, e `mfa_router.py:35` reemite os cookies já elevados.
+
+O frontend também cobre o caso: `session.js:196` detecta sessão sem MFA e redireciona para `/mfa` em vez de morrer num 403.
+
+### Defeitos conhecidos da experiência de autenticação
+
+Levantados em 02/08/2026 durante a ativação. Ambos são de código, não de configuração, e **não estão corrigidos**.
+
+#### 1. A Etapa 1 do rollout em duas etapas é inexecutável
+
+`auth.js:79-88`:
+
+```javascript
+async function checkExistingSession(config) {
+    if (
+        !config.enabled ||
+        !config.dashboard_required
+    ) {
+        window.location.replace(
+            config.after_login_path || "/dashboard"
+        );
+        return true;
+    }
+```
+
+Com `enabled=true` e `dashboard_required=false` — exatamente o estado intermediário que a ativação em duas etapas propunha — a página de login expulsa o usuário para o dashboard antes de renderizar o formulário. É o único estado em que **não se consegue fazer login pela interface**.
+
+Isso invalida o propósito da Etapa 1, que era validar credenciais e MFA antes de fechar o acesso. Na prática o rollout precisa ir direto ao estado final, porque é `dashboard_required=true` que destrava o formulário. O risco disso é baixo e reversível: o rollback é uma variável de ambiente.
+
+Correção sugerida: só redirecionar quando `!config.enabled`, ou quando já existir sessão válida.
+
+#### 2. Uma única mensagem para causas distintas
+
+`session_client.py:62-65` colapsa **400, 401 e 403** do Supabase em `InvalidCredentialsError`:
+
+```python
+if response.status_code in {400, 401, 403}:
+    raise InvalidCredentialsError("E-mail ou senha invalidos.")
+```
+
+E `router.py:144-160` mapeia `InvalidCredentialsError`, `InvalidAccessTokenError` e `SessionRefreshError` todos para `Credenciais ou sessao invalidas.`
+
+Ou seja, a mesma frase na tela pode significar:
+
+- senha ou e-mail errados;
+- chave de API rejeitada pelo Supabase;
+- e-mail não confirmado;
+- token válido na emissão mas reprovado na verificação (issuer, audience, algoritmo, JWKS).
+
+O login tem duas etapas internas (`router.py:190-200`): `password_login` e, em seguida, `authenticate(access_token)`. As duas falham com texto idêntico, o que torna impossível distinguir "senha errada" de "token rejeitado" pela interface.
+
+Correção sugerida: manter a mensagem genérica para o usuário final, mas registrar a causa real em log estruturado, sem vazar credencial.
+
+Técnica de diagnóstico que funcionou, para reuso futuro: comparar `auth.users.last_sign_in_at` antes e depois da tentativa de login. Esse campo só avança quando a **primeira** etapa tem sucesso, o que divide o problema exatamente ao meio. Atenção, porém: login por magic link ou por link de recuperação também atualiza o campo, então a comparação precisa ser antes/depois da tentativa específica que se quer investigar.
+
+#### Limite de e-mail do Supabase
+
+O serviço de e-mail embutido tem limite de taxa baixo no plano gratuito. Recuperação de senha e magic link param de funcionar com `limite de taxa de e-mail ultrapassado`. Alternativas: aguardar a janela reiniciar, configurar SMTP próprio, ou definir a senha direto no SQL Editor com `crypt(...)`/`gen_salt('bf')`.
 
 ### Supabase
 
@@ -373,7 +519,9 @@ phase-16-observation-db-isolation-fix
 
 Produção aprovada: Session Pooler, persistência, cache, histórico e banco principal preservados.
 
-### 17 — coletor automático, commitada e pendente de deploy
+### 17 — coletor automático, implantada e validada em produção
+
+Merge `823d84f`, tag `phase-17-background-radar-collector`, deploy automático no Render em 01/08/2026.
 
 Implementado:
 
@@ -409,6 +557,34 @@ GET /real-markets/radar/opportunities       # exige require_dashboard_user
 O payload de `monitoring` ganhou três campos: `force_refresh_requested`, `force_refresh_applied` e `force_refresh_retry_after_seconds`.
 
 A janela é consumida no momento da requisição, antes da coleta executar. Se o scan falhar, o cooldown já foi gasto. É deliberado e coerente com a regra fail-closed da seção 1.
+
+Detalhe não óbvio pela leitura do código: `bypass_cooldown=True` pula a **verificação** do cooldown, mas ainda **grava** `_last_forced_at`. Como o coletor automático usa esse caminho a cada ciclo, um `force_refresh` externo logo após um ciclo é recusado. É o comportamento desejado — o dado acabou de ser atualizado de qualquer forma — e foi confirmado em produção.
+
+#### Resultado da validação em produção (01/08/2026)
+
+```text
+coletor    enabled=true cycles=11 successes=11 failures=0 skipped=0
+           last_status=READY  last_markets_priced=20
+           ciclo leva ~16s num intervalo de 60s
+
+snapshot   status=READY  served_from_snapshot=true
+           snapshot_is_stale=false
+           snapshot_configuration_match=true
+           snapshot_max_age_seconds=180.0  (intervalo 60 x multiplicador 3)
+           duas chamadas seguidas: cycles 11 -> 11, delta 0
+
+historico  source=persistent  persistence_available=true  error=null
+           pontos atravessaram os reinicios do dia
+
+guardrail  force_refresh externo rebaixado para cache,
+           retry_after decrescendo, cache_hit=true
+
+flags      read_only e market_data_only true; execution_authorized,
+           financial_execution, automatic_execution_authorized e
+           order_submission_available false nos tres endpoints
+```
+
+Quando o snapshot reporta `CONFIGURATION_MISMATCH`, compare `snapshot_configuration` com `requested_configuration` antes de suspeitar de defeito: em geral significa que alguém chamou `/opportunities` com os defaults daquele endpoint (`limit=40`, `near=0.04`), que diferem dos do coletor. Resolve-se sozinho no ciclo seguinte.
 
 ---
 
@@ -1257,25 +1433,16 @@ Aplicar:
 
 ## 23. Roadmap recomendado
 
-### Fase 17 — concluir e publicar
+### Fase 17 — CONCLUÍDA
 
-Estado: código commitado no branch de feature. Falta publicar.
+Merge `823d84f`, tag `phase-17-background-radar-collector`, implantada e validada em produção em 01/08/2026. Todos os critérios da seção 25 aprovados. Resultado registrado na seção 5.
 
-Concluído:
+Ficou de fora, por ser independente desta fase:
 
-1. ~~revisar diff~~ — feito;
-2. ~~commit autorizado~~ — `78d0fef` e o commit de guardrails;
-3. ~~confirmar flags falsas~~ — 12/12 `False`.
+- ligar a exigência de autenticação em produção (seção 4) — **feito em 02/08/2026**;
+- `/docs` e `/openapi.json` respondem publicamente — **ainda aberto**; não é fechado pelas flags de autenticação e continua expondo a superfície completa da API.
 
-Pendente:
-
-4. push do commit de guardrails;
-5. PR, merge e tag;
-6. configurar env no Render, incluindo `REAL_OPPORTUNITY_FORCE_REFRESH_COOLDOWN_SECONDS`;
-7. deploy;
-8. validar status/snapshot;
-9. validar persistência e reinício;
-10. revalidar `/opportunities` autenticado em produção, já que deixou de ser público.
+Os dois defeitos de experiência de login registrados na seção 4 também seguem em aberto e não têm fase atribuída.
 
 ### Fase 18 — domínio cripto read-only
 
@@ -1405,8 +1572,7 @@ Set-Location C:\predarb-framework
 
 git status --short --branch
 git log --oneline -6
-git rev-list --left-right --count `
-  origin/feature/phase-17-background-radar-collector...HEAD
+git rev-list --left-right --count origin/main...HEAD
 git diff --stat
 ```
 
@@ -1643,26 +1809,29 @@ https://docs.stargate.finance/
 Leia integralmente o arquivo CLAUDE.md na raiz do projeto antes de agir.
 
 Estamos em C:\predarb-framework, branch
-feature/phase-17-background-radar-collector.
+docs/phase-17-production-validation.
 
-A Fase 17 está implementada, commitada e validada com 688 testes aprovados,
-mas ainda não foi merjada nem implantada. Não faça commit, push, merge, tag,
-deploy, stash, reset ou descarte sem minha autorização.
+A Fase 17 está concluída: merjada, tagueada, implantada e validada em
+produção, com 688 testes aprovados. A próxima fase é a 18. Não faça commit,
+push, merge, tag, deploy, stash, reset ou descarte sem minha autorização.
 
 Primeiro:
 1. execute git status --short --branch e git log --oneline -6;
 2. compare o estado real com a seção 3 e aponte divergências;
-3. faça um resumo técnico do que ainda falta na Fase 17;
-4. confirme que as proteções financeiras continuam desativadas;
-5. informe qualquer risco ou inconsistência real.
+3. confirme que as proteções financeiras continuam desativadas;
+4. informe qualquer risco ou inconsistência real.
 
 Não altere arquivos ainda.
 
-Depois seguiremos com a conclusão da Fase 17 e a expansão para o novo
-bounded context de arbitragem de criptomoedas CEX/DEX/Web3, começando
-somente por dados públicos e simulação. Nenhuma execução real deverá ser
-habilitada sem autorização explícita e sem cumprir o checklist definido
-no CLAUDE.md.
+Depois seguiremos para a Fase 18, o novo bounded context de arbitragem de
+criptomoedas CEX/DEX/Web3, começando somente por dados públicos e
+simulação. Nenhuma execução real deverá ser habilitada sem autorização
+explícita e sem cumprir o checklist definido no CLAUDE.md.
+
+A pendência de segurança da seção 4 foi fechada em 02/08/2026: a
+autenticação passou a ser exigida em produção. Seguem em aberto, sem fase
+atribuída, os dois defeitos de experiência de login registrados na seção 4
+e a exposição pública de /docs e /openapi.json.
 ```
 
 ---

@@ -96,6 +96,10 @@ backend/app/core/application_before_routes_repair_*.py
 .agent.md
 backend/estrutura_backend.txt
 
+# Duplica a secao 30 do CLAUDE.md e tende a divergir dela.
+# Mantido apenas local, para nao existirem duas fontes de verdade.
+CLAUDE_CODE_PROMPT_INICIAL.txt
+
 # PredArb superseded historical source files
 backend/app/core/application_before_*.py
 backend/app/dashboard/router-old.py
