@@ -41,6 +41,30 @@ class InsufficientDepthError(CryptoArbitrageError):
     """Profundidade insuficiente para a quantidade solicitada."""
 
 
+class BookNotReadyError(CryptoArbitrageError):
+    """Delta recebido antes do snapshot inicial.
+
+    Aplicar delta sobre book vazio produziria um livro
+    incompleto que parece válido.
+    """
+
+
+class SequenceGapError(CryptoArbitrageError):
+    """Descontinuidade na sequência de updates do book.
+
+    Um gap significa que ao menos um delta se perdeu. O book
+    local deixa de refletir a venue e precisa de resync.
+    """
+
+
+class CorruptedBookError(CryptoArbitrageError):
+    """Book local em estado impossível, como mercado cruzado.
+
+    Indica que a aplicação de deltas divergiu da venue. Exige
+    resync, nunca correção local.
+    """
+
+
 class ConnectorError(CryptoArbitrageError):
     """Falha genérica de conector."""
 
