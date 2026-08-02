@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B e 19C1 estão implementadas e aprovadas localmente, sem deploy — são domínio e lógica pura, sem rede e sem endpoint. O próximo incremento é o 19C2, o transporte concreto.
+> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. Os transportes existem, mas nada os aciona: não há roteador, job de scheduler nem endpoint. A próxima fase é a 20.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,7 +88,7 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-19c1-stream-orchestration
+feature/phase-19c2-transport
 ```
 
 As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
@@ -122,13 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-880 passed, 2 warnings in 51.40s
+912 passed, 2 warnings in 62.77s
 git diff --check: aprovado
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -137,7 +137,7 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 880.
+O total esperado permanece 912.
 
 ### Teste instável conhecido
 
@@ -763,6 +763,62 @@ O 19C foi dividido porque transporte concreto e orquestração são riscos difer
 **`snapshot_for_pricing` devolve snapshot e veredito juntos.** Livro não pronto ou velho demais devolve `None` com o motivo. Quem chama não reimplementa a decisão e não tem como esquecer de checá-la.
 
 **Reconexão obriga resync.** `mark_disconnected` invalida o livro: mensagens perdidas enquanto o socket esteve fora não têm como ser recuperadas, e o livro local deixou de refletir a venue.
+
+### 19C2 — transportes concretos e sincronização inicial
+
+Implementada em 02/08/2026. Quarto incremento da Fase 19. 880 testes antes, 912 depois. Nenhuma dependência nova: `httpx` e `websockets` já estavam no `requirements.txt`.
+
+```text
+connectors/http_transport.py       HttpxRestTransport
+connectors/websocket_transport.py  WebsocketsTransport
+market_data/synchronizer.py        BookSynchronizer, SyncState, SyncStats
+pytest.ini                         marcador integration, desligado por default
+```
+
+#### O procedimento de sincronização é o núcleo deste incremento
+
+É aqui que books locais divergem em silêncio, e a causa é quase sempre a mesma: buscar o snapshot **antes** de abrir o stream perde tudo o que acontece entre as duas coisas, e o livro nasce errado sem emitir sinal algum.
+
+A ordem correta é o inverso:
+
+```text
+1. abrir o stream e BUFFERIZAR os deltas
+2. so entao buscar o snapshot REST
+3. conferir se o snapshot alcanca o primeiro delta bufferizado
+4. aplicar o snapshot
+5. reproduzir o buffer, descartando o que ja estava contido
+6. passar para modo ao vivo
+```
+
+**O passo 3 é o que a maioria das implementações esquece.** Snapshot antigo demais deixa um vão entre ele e o buffer, e esse vão nunca é preenchido. `apply_rest_snapshot` recusa em vez de aplicar: livro que nasce com vão é pior do que livro que ainda não existe, porque parece pronto.
+
+`BookSynchronizer` implementa isso como máquina de estados — `BUFFERING`, `SYNCED`, `FAILED` — e usa `is_snapshot_usable` quando o adaptador oferece, caindo numa comparação genérica de sequência quando não.
+
+**A fila é limitada.** Buffer sem teto em processo de vida longa é vazamento de memória disfarçado, e buffer gigante já é sinal de que a sincronização travou. Estourar leva a `FAILED` e exige recomeço — melhor do que acumular.
+
+**Venue que empurra snapshot dispensa o REST.** A Bybit envia `type: "snapshot"` logo na inscrição; nesse caso o sincronizador aplica direto e passa a `SYNCED` sem nunca chamar o endpoint REST.
+
+#### Decisões dos transportes
+
+**O cliente httpx é injetado, nunca criado internamente.** Quem constrói decide timeout, proxy e limites de conexão. Nos testes entra `httpx.MockTransport`, que percorre o caminho real de parsing sem abrir socket.
+
+**Rate limit local recusa antes de gastar a cota da venue.** Há teste específico provando que a requisição bloqueada **não chega** ao handler. E `429` vindo da venue vira `RateLimitExceededError`, contabilizado como rate limit e não como erro genérico — são causas diferentes e levam a ações diferentes.
+
+**A conexão WebSocket é injetável e o import de `websockets` é tardio.** A API pública da biblioteca mudou de lugar entre versões; isolar o import num único ponto evita que uma atualização quebre a importação do pacote inteiro.
+
+**`ping_interval` e `ping_timeout` são explícitos.** Conexão de market data que morre em silêncio é pior do que conexão que cai: sem heartbeat, o livro local continua parecendo saudável enquanto para de receber atualização.
+
+**`float` aparece apenas em timeouts.** `ping_interval`, `ping_timeout` e `open_timeout` são parâmetros de tempo exigidos pela biblioteca. A proibição da seção 28 é sobre valor financeiro — preço, quantidade, taxa, PnL, saldo —, e nenhum deles usa float em lugar nenhum do domínio.
+
+#### Testes de integração
+
+`pytest.ini` passou a registrar o marcador `integration` e a desligá-lo por padrão via `addopts = -ra -m "not integration"`. Testes que toquem rede devem ser marcados e só rodam sob pedido explícito:
+
+```powershell
+.venv\Scripts\python.exe -m pytest -m integration
+```
+
+Assim eles existem e ficam documentados sem violar a regra da seção 28, que exige que a suíte padrão não dependa de internet.
 
 ---
 
