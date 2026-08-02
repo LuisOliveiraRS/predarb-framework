@@ -2,11 +2,11 @@
 
 > Coloque este arquivo na raiz de `C:\predarb-framework` para servir como contexto principal do Claude Code no VSCode.
 >
-> Data do contexto: 01/08/2026.
+> Data do contexto: 02/08/2026.
 >
 > Estado: a Fase 17 está implantada e validada em produção. A próxima fase é a 18.
 >
-> Pendência de segurança conhecida: a autenticação existe e funciona, mas **não está sendo exigida em produção**. Ver seção 4.
+> A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
 ---
 
@@ -88,8 +88,10 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-17-background-radar-collector
+docs/phase-17-production-validation
 ```
+
+A branch de implementação da Fase 17, `feature/phase-17-background-radar-collector`, já foi merjada e tagueada. A branch atual existe apenas para registrar a validação em produção e as correções de documentação posteriores. Confira sempre com `git status --short --branch` antes de confiar neste campo.
 
 ### Base conhecida
 
@@ -166,25 +168,46 @@ Consequências:
 
 Um reinício zera a memória: `history_points` volta a `0` e o snapshot volta a `WARMING_UP` até o primeiro ciclo do coletor. Isso é esperado. O histórico persistente é reidratado do banco dedicado.
 
-### Autenticação em produção — PENDENTE
+### Autenticação em produção — ATIVA desde 02/08/2026
 
-A autenticação da Fase 13B está implementada, testada e funcional, mas **não está sendo exigida** no ambiente do Render. Verificado em 01/08/2026:
+A autenticação da Fase 13B passou a ser **exigida** no ambiente do Render. Estado verificado em 02/08/2026:
 
 ```text
-GET /dashboard                          -> 200 sem credencial
-                                           serve o dashboard real, nao a tela de login
-GET /real-markets/radar/opportunities   -> 200 sem credencial, com dado real
-GET /auth/me                            -> 401  (o mecanismo funciona)
-GET /docs e /openapi.json               -> 200 publicos
+GET /auth/config          -> enabled=true  dashboard_required=true
+
+exigem credencial (401 sem sessao valida):
+    /dashboard/api/*                     inclui /status e /health do dashboard
+    /router/*
+    /real-markets/radar/opportunities
+    /auth/me
+
+publicos por projeto (200):
+    /dashboard   /login   /health
+    /real-markets/radar/snapshot
+    /real-markets/radar/collector/status
+    /docs   /openapi.json
 ```
 
-A causa é `app/auth/dependencies.py:157-158`: `require_dashboard_user` faz `return None` de imediato quando `AUTH_REQUIRED_FOR_DASHBOARD` é falso, sem sequer olhar a credencial. Os defaults de `settings.py:15-16` são `false` para `AUTH_ENABLED` e `AUTH_REQUIRED_FOR_DASHBOARD`, então basta a variável não existir no Render para tudo ficar aberto.
+Variáveis que ativam o comportamento, ambas necessárias:
 
-Consequência prática: a proteção adicionada ao `/opportunities` na Fase 17 é hoje um no-op em produção. O código está correto; a flag que o ativa é que está desligada.
+```text
+AUTH_ENABLED=true
+AUTH_REQUIRED_FOR_DASHBOARD=true
+```
 
-#### Como ligar sem derrubar o serviço
+Rollback de qualquer etapa: `AUTH_REQUIRED_FOR_DASHBOARD=false` reabre o acesso preservando o resto; `AUTH_ENABLED=false` desliga o subsistema inteiro. Nenhum dos dois afeta o coletor da Fase 17, confirmado em produção.
 
-Pré-requisitos, todos validados no boot — qualquer um faltando impede a aplicação de subir:
+#### Como verificar — e como NÃO verificar
+
+Use `GET /auth/config`. Ele é público, não expõe segredo nenhum e devolve `enabled` e `dashboard_required` lidos direto do `settings`. Foi a ferramenta que resolveu o diagnóstico de 02/08/2026 e deve ser o primeiro comando de qualquer investigação de autenticação.
+
+**Não use `GET /dashboard` como evidência.** A rota HTML em `dashboard/router.py:39` não tem dependência de autenticação por projeto — serve apenas o shell, e os dados vêm de `/dashboard/api/*`, esses sim protegidos. `/dashboard` responde 200 com ou sem autenticação exigida. A versão anterior desta seção tratava esse 200 como sintoma do problema, o que é incorreto e induz a concluir erradamente que a ativação falhou.
+
+O teste válido de fechamento é `/dashboard/api/status` responder 401 sem credencial.
+
+#### Pré-requisitos de boot
+
+Validados em `settings.py:272-329`. Qualquer um faltando impede a aplicação de subir:
 
 - `SUPABASE_URL` preenchida e começando com `https://` fora de DEBUG;
 - `SUPABASE_PUBLISHABLE_KEY` preenchida (é a chave pública; a service-role nunca entra aqui);
@@ -192,21 +215,90 @@ Pré-requisitos, todos validados no boot — qualquer um faltando impede a aplic
 - `AUTH_COOKIE_SECURE=true` fora de DEBUG;
 - `SUPABASE_JWKS_CACHE_TTL_SECONDS` entre 60 e 600.
 
-Ativação em duas etapas, para separar "as credenciais estão certas" de "o acesso está fechado":
+Detalhe que custou tempo: esse bloco inteiro está dentro de `if self.AUTH_ENABLED:`. Com a flag falsa, `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` **nunca são checadas**. Um boot bem-sucedido com `AUTH_ENABLED=false` não diz absolutamente nada sobre a validade dessas variáveis.
+
+Um boot recusado por erro de validação **não derruba produção**: o Render mantém o deploy anterior servindo. Confirmado em 02/08/2026.
+
+#### Armadilha do prefixo NEXT_PUBLIC_
+
+O painel do Supabase exibe os snippets de configuração no formato do Next.js, com prefixo `NEXT_PUBLIC_`. Este backend é FastAPI e **não** usa prefixo: `settings.py:138-143` declara `SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)`.
+
+Consequências:
+
+- `case_sensitive=False` — maiúsculas/minúsculas não importam;
+- não há `env_prefix` — o nome é literal;
+- **`extra="ignore"` descarta em silêncio** qualquer variável cujo nome não corresponda a um campo declarado.
+
+Variáveis nomeadas `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` aparecem corretamente configuradas no painel do Render e chegam vazias ao processo, sem aviso algum. Os nomes corretos são `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY`. O mesmo vale para qualquer espaço invisível no nome da chave.
+
+Sintoma correspondente no boot:
 
 ```text
-Etapa 1   AUTH_ENABLED=true
-          AUTH_REQUIRED_FOR_DASHBOARD=false
-          Se o servico subir, os pre-requisitos estao satisfeitos.
-          Se nao subir, reverter AUTH_ENABLED=false imediatamente.
-
-Etapa 2   AUTH_REQUIRED_FOR_DASHBOARD=true
-          Passa a exigir credencial.
+ValidationError: AUTH_ENABLED exige SUPABASE_URL.
 ```
 
-Atenção ao MFA: `require_dashboard_user` chama `user.require_mfa()`. Um usuário autenticado **sem MFA inscrito recebe 403**, não 200. Confirme que a conta admin tem TOTP ativo antes da etapa 2, sob risco de ficar sem acesso ao próprio dashboard.
+#### Sobre o MFA
 
-Rollback de qualquer etapa: `AUTH_ENABLED=false`.
+`require_dashboard_user` chama `user.require_mfa()`, e `has_mfa` é `aal == "aal2"` (`auth/models.py:45`) — propriedade **da sessão**, não do cadastro. Ter o fator TOTP inscrito não basta: o login precisa efetivamente elevar a sessão a `aal2`.
+
+Não há risco de deadlock de inscrição. `mfa_router.py:18` usa `require_authenticated_user`, que apenas autentica e **não** exige MFA (`dependencies.py:139-148`). Uma sessão em `aal1` consegue acessar `/auth/mfa/*` para inscrever e verificar o fator, e `mfa_router.py:35` reemite os cookies já elevados.
+
+O frontend também cobre o caso: `session.js:196` detecta sessão sem MFA e redireciona para `/mfa` em vez de morrer num 403.
+
+### Defeitos conhecidos da experiência de autenticação
+
+Levantados em 02/08/2026 durante a ativação. Ambos são de código, não de configuração, e **não estão corrigidos**.
+
+#### 1. A Etapa 1 do rollout em duas etapas é inexecutável
+
+`auth.js:79-88`:
+
+```javascript
+async function checkExistingSession(config) {
+    if (
+        !config.enabled ||
+        !config.dashboard_required
+    ) {
+        window.location.replace(
+            config.after_login_path || "/dashboard"
+        );
+        return true;
+    }
+```
+
+Com `enabled=true` e `dashboard_required=false` — exatamente o estado intermediário que a ativação em duas etapas propunha — a página de login expulsa o usuário para o dashboard antes de renderizar o formulário. É o único estado em que **não se consegue fazer login pela interface**.
+
+Isso invalida o propósito da Etapa 1, que era validar credenciais e MFA antes de fechar o acesso. Na prática o rollout precisa ir direto ao estado final, porque é `dashboard_required=true` que destrava o formulário. O risco disso é baixo e reversível: o rollback é uma variável de ambiente.
+
+Correção sugerida: só redirecionar quando `!config.enabled`, ou quando já existir sessão válida.
+
+#### 2. Uma única mensagem para causas distintas
+
+`session_client.py:62-65` colapsa **400, 401 e 403** do Supabase em `InvalidCredentialsError`:
+
+```python
+if response.status_code in {400, 401, 403}:
+    raise InvalidCredentialsError("E-mail ou senha invalidos.")
+```
+
+E `router.py:144-160` mapeia `InvalidCredentialsError`, `InvalidAccessTokenError` e `SessionRefreshError` todos para `Credenciais ou sessao invalidas.`
+
+Ou seja, a mesma frase na tela pode significar:
+
+- senha ou e-mail errados;
+- chave de API rejeitada pelo Supabase;
+- e-mail não confirmado;
+- token válido na emissão mas reprovado na verificação (issuer, audience, algoritmo, JWKS).
+
+O login tem duas etapas internas (`router.py:190-200`): `password_login` e, em seguida, `authenticate(access_token)`. As duas falham com texto idêntico, o que torna impossível distinguir "senha errada" de "token rejeitado" pela interface.
+
+Correção sugerida: manter a mensagem genérica para o usuário final, mas registrar a causa real em log estruturado, sem vazar credencial.
+
+Técnica de diagnóstico que funcionou, para reuso futuro: comparar `auth.users.last_sign_in_at` antes e depois da tentativa de login. Esse campo só avança quando a **primeira** etapa tem sucesso, o que divide o problema exatamente ao meio. Atenção, porém: login por magic link ou por link de recuperação também atualiza o campo, então a comparação precisa ser antes/depois da tentativa específica que se quer investigar.
+
+#### Limite de e-mail do Supabase
+
+O serviço de e-mail embutido tem limite de taxa baixo no plano gratuito. Recuperação de senha e magic link param de funcionar com `limite de taxa de e-mail ultrapassado`. Alternativas: aguardar a janela reiniciar, configurar SMTP próprio, ou definir a senha direto no SQL Editor com `crypt(...)`/`gen_salt('bf')`.
 
 ### Supabase
 
@@ -1347,8 +1439,10 @@ Merge `823d84f`, tag `phase-17-background-radar-collector`, implantada e validad
 
 Ficou de fora, por ser independente desta fase:
 
-- ligar a exigência de autenticação em produção (seção 4);
-- `/docs` e `/openapi.json` respondem publicamente.
+- ligar a exigência de autenticação em produção (seção 4) — **feito em 02/08/2026**;
+- `/docs` e `/openapi.json` respondem publicamente — **ainda aberto**; não é fechado pelas flags de autenticação e continua expondo a superfície completa da API.
+
+Os dois defeitos de experiência de login registrados na seção 4 também seguem em aberto e não têm fase atribuída.
 
 ### Fase 18 — domínio cripto read-only
 
@@ -1478,8 +1572,7 @@ Set-Location C:\predarb-framework
 
 git status --short --branch
 git log --oneline -6
-git rev-list --left-right --count `
-  origin/feature/phase-17-background-radar-collector...HEAD
+git rev-list --left-right --count origin/main...HEAD
 git diff --stat
 ```
 
@@ -1716,7 +1809,7 @@ https://docs.stargate.finance/
 Leia integralmente o arquivo CLAUDE.md na raiz do projeto antes de agir.
 
 Estamos em C:\predarb-framework, branch
-feature/phase-17-background-radar-collector.
+docs/phase-17-production-validation.
 
 A Fase 17 está concluída: merjada, tagueada, implantada e validada em
 produção, com 688 testes aprovados. A próxima fase é a 18. Não faça commit,
@@ -1735,8 +1828,10 @@ criptomoedas CEX/DEX/Web3, começando somente por dados públicos e
 simulação. Nenhuma execução real deverá ser habilitada sem autorização
 explícita e sem cumprir o checklist definido no CLAUDE.md.
 
-Há uma pendência de segurança em aberto, descrita na seção 4: a
-autenticação existe e funciona, mas não está sendo exigida em produção.
+A pendência de segurança da seção 4 foi fechada em 02/08/2026: a
+autenticação passou a ser exigida em produção. Seguem em aberto, sem fase
+atribuída, os dois defeitos de experiência de login registrados na seção 4
+e a exposição pública de /docs e /openapi.json.
 ```
 
 ---
