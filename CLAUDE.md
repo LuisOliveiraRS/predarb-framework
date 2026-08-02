@@ -4,7 +4,7 @@
 >
 > Data do contexto: 02/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. A próxima fase é a 18.
+> Estado: a Fase 17 está implantada e validada em produção. A Fase 18 está implementada e aprovada localmente, sem deploy — é domínio puro, sem endpoint. A próxima fase é a 19.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,10 +88,10 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-docs/phase-17-production-validation
+feature/phase-18-crypto-domain
 ```
 
-A branch de implementação da Fase 17, `feature/phase-17-background-radar-collector`, já foi merjada e tagueada. A branch atual existe apenas para registrar a validação em produção e as correções de documentação posteriores. Confira sempre com `git status --short --branch` antes de confiar neste campo.
+As branches anteriores (`feature/phase-17-background-radar-collector` e `docs/phase-17-production-validation`) já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
 
 ### Base conhecida
 
@@ -122,11 +122,13 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-688 passed, 2 warnings in 114.38s
+752 passed, 2 warnings in 71.49s
 git diff --check: aprovado
-auditoria de flags financeiras: 12/12 False em 511 ocorrências
+auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
+
+Linha de base antes da Fase 18: 688 testes. A Fase 18 acrescentou 64.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -135,7 +137,7 @@ Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a
 Get-ChildItem tests\test_*.py | Sort-Object Name
 ```
 
-O total esperado permanece 688.
+O total esperado permanece 752.
 
 Warnings conhecidos:
 
@@ -585,6 +587,53 @@ flags      read_only e market_data_only true; execution_authorized,
 ```
 
 Quando o snapshot reporta `CONFIGURATION_MISMATCH`, compare `snapshot_configuration` com `requested_configuration` antes de suspeitar de defeito: em geral significa que alguém chamou `/opportunities` com os defaults daquele endpoint (`limit=40`, `near=0.04`), que diferem dos do coletor. Resolve-se sozinho no ciclo seguinte.
+
+### 18 — domínio cripto read-only
+
+Implementada em 02/08/2026. Bounded context novo em `backend/app/crypto_arbitrage/`, sem tocar em nenhum módulo existente. A adição é puramente aditiva: 688 testes antes, 752 depois, nenhuma regressão.
+
+Estrutura entregue:
+
+```text
+backend/app/crypto_arbitrage/
+├── domain/
+│   ├── enums.py       VenueKind, MarketType, InstrumentStatus, Side,
+│   │                  OrderType, TimeInForce, StrategyType, RiskStatus,
+│   │                  ExecutionMode, ConnectorState
+│   ├── errors.py      hierarquia sob CryptoArbitrageError
+│   ├── money.py       aritmetica Decimal
+│   ├── symbols.py     normalizacao entre venues
+│   ├── fees.py        FeeRate e FeeSchedule
+│   └── models.py      Instrument, OrderBookSnapshot, Opportunity,
+│                      ExecutionPlan, OrderIntent, Fill, RiskDecision,
+│                      Balance, ConnectorHealth, VwapResult
+├── connectors/
+│   ├── base.py        Protocols read-only + TradingAdapter declarado
+│   └── registry.py    registro fail-closed
+└── mocks/
+    └── public_cex.py  conector deterministico, sem rede
+```
+
+#### Decisões que valem conhecer
+
+**`money.to_decimal` recusa `float` em vez de convertê-lo.** A seção 28 proíbe float em valores financeiros, mas uma conversão silenciosa cumpriria a letra e violaria o espírito: `Decimal(0.1)` carrega o erro de representação para dentro do domínio, e ele se propaga por VWAP, taxas e PnL sem deixar rastro. Passar float levanta `PrecisionError`.
+
+**`FeeSchedule` nunca devolve default.** Taxa ausente ou expirada levanta `FeeUnknownError`. É a invariante 15 da seção 8 aplicada na estrutura de dados, não na chamada — não existe caminho em que uma taxa desconhecida vire zero.
+
+**O registry recusa por capacidade, não por tipo.** `assert_no_execution_capability` inspeciona o objeto em busca de `submit_order`, `cancel_order`, `withdraw`, `sign_transaction` e afins. Qualquer objeto que apenas *pareça* capaz de executar é recusado, mesmo sem declarar o Protocol. `register_trading_adapter` existe e sempre levanta `ExecutionNotAuthorizedError`, para que quem procure o caminho da execução encontre a recusa explícita em vez de improvisar.
+
+**Defaults fail-closed nos modelos.** `InstrumentStatus.UNKNOWN`, `RiskStatus.BLOCKED` e `RiskDecision(approved=False)` são os valores iniciais. `Opportunity.is_executable` e `ExecutionPlan.is_authorized` retornam `False` incondicionalmente nesta fase. `ExecutionPlan` recusa `ExecutionMode.LIVE` na própria validação do modelo.
+
+**O book valida o que normalmente se assume.** Ordenação de bids e asks, mercado cruzado, timestamps com timezone e profundidade suficiente. Um book desordenado produziria VWAP incorreto em silêncio; aqui levanta `DomainValidationError`.
+
+Verificações da fase:
+
+```text
+752 passed, 2 warnings
+nenhum import de rede em crypto_arbitrage/
+float presente apenas em docstrings e na guarda que o recusa
+nenhuma flag financeira True em app/
+```
 
 ---
 
@@ -1444,7 +1493,9 @@ Ficou de fora, por ser independente desta fase:
 
 Os dois defeitos de experiência de login registrados na seção 4 também seguem em aberto e não têm fase atribuída.
 
-### Fase 18 — domínio cripto read-only
+### Fase 18 — domínio cripto read-only — CONCLUÍDA
+
+Implementada em 02/08/2026. Detalhes na seção 5.
 
 - bounded context;
 - modelos `Decimal`;
@@ -1453,7 +1504,7 @@ Os dois defeitos de experiência de login registrados na seção 4 também segue
 - nenhum segredo;
 - nenhum endpoint de ordem.
 
-Aceitação: testes unitários e flags financeiras falsas.
+Aceitação: testes unitários e flags financeiras falsas. **Aprovada** com 752 testes no total.
 
 ### Fase 19 — Binance, OKX e Bybit públicos
 
