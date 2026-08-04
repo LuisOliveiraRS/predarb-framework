@@ -166,6 +166,30 @@ def test_new_css_classes_exist():
         assert selector in CSS, selector
 
 
+def test_static_assets_were_cache_busted_for_this_phase():
+    """O template versiona JS e CSS por query string.
+
+    Publicar código novo sem bumpar a versão entrega o arquivo
+    antigo a quem já visitou o dashboard: o painel aparece sem
+    estilo e sem comportamento, e o servidor parece correto
+    porque de fato serve o conteúdo novo — só que ninguém o pede.
+
+    Pego na validação local da 20D, quando o template ainda
+    apontava para v=17-background-2.
+    """
+
+    assert (
+        "dashboard.js?v=20d-crypto-1" in HTML
+    ), "bump a versão do JS ao alterar dashboard.js"
+
+    assert (
+        "dashboard.css?v=20d-crypto-1" in HTML
+    ), "bump a versão do CSS ao alterar dashboard.css"
+
+    assert "v=17-background-2" not in HTML
+    assert "v=15-monitoring-1" not in HTML
+
+
 def test_dashboard_view_labels_are_not_mojibake():
     """Regressão real: DASHBOARD_VIEWS trazia "Vis?o Geral" e
     "Posi??es", e dashboard.js usa esse valor como título
