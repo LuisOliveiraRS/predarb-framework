@@ -626,12 +626,13 @@ function startWebSocket() {
 
 
 const DASHBOARD_VIEWS = {
-    overview: "Vis?o Geral",
+    overview: "Visão Geral",
     "markets-panel": "Mercados",
     "opportunities-panel": "Oportunidades",
     "real-radar-panel": "Radar Real",
+    "crypto-scanner-panel": "Scanner Cripto",
     "orders-panel": "Ordens",
-    "positions-panel": "Posi??es",
+    "positions-panel": "Posições",
     "paper-panel": "Conta Paper",
     "router-panel": "AI Router",
     "events-panel": "Eventos",
@@ -1214,3 +1215,466 @@ function initializeRealOpportunityRadar() {
 }
 
 initializeRealOpportunityRadar();
+
+
+const cryptoScannerState = {
+  loading: false,
+  timer: null,
+};
+
+const CRYPTO_SCANNER_STAGE_LABEL = {
+  freshness: "Frescor",
+  depth: "Profundidade",
+  fees: "Taxas",
+  profitability: "Lucratividade",
+  modelling: "Modelagem",
+};
+
+function cryptoScannerText(id, value) {
+  const node = document.getElementById(id);
+
+  if (node) {
+    node.textContent = value;
+  }
+}
+
+// Os valores chegam como string porque o domínio cripto
+// serializa Decimal. Number entra apenas para arredondar a
+// exibição; o payload original permanece intacto.
+function cryptoScannerNumber(value, digits = 2) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return String(value);
+  }
+
+  return parsed.toFixed(digits);
+}
+
+function cryptoScannerPercent(value) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return String(value);
+  }
+
+  return `${(parsed * 100).toFixed(3)}%`;
+}
+
+function cryptoScannerCell(row, value) {
+  const cell = document.createElement("td");
+  cell.textContent = value;
+  row.appendChild(cell);
+
+  return cell;
+}
+
+function cryptoScannerRoute(item) {
+  return (
+    `${item.buy_venue_id || "?"} → ` +
+    `${item.sell_venue_id || "?"}`
+  );
+}
+
+function cryptoScannerClearTable(id) {
+  const body = document.getElementById(id);
+
+  if (body) {
+    body.innerHTML = "";
+  }
+
+  return body;
+}
+
+function cryptoScannerEmptyRow(body, columns, message) {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+
+  cell.colSpan = columns;
+  cell.textContent = message;
+  row.appendChild(cell);
+  body.appendChild(row);
+}
+
+function renderCryptoScannerAlerts(messages) {
+  const alerts = document.getElementById(
+    "crypto-scanner-alerts",
+  );
+
+  if (!alerts) {
+    return;
+  }
+
+  alerts.innerHTML = "";
+
+  if (messages.length === 0) {
+    alerts.hidden = true;
+
+    return;
+  }
+
+  messages.forEach((message) => {
+    const line = document.createElement("p");
+    line.textContent = message;
+    alerts.appendChild(line);
+  });
+
+  alerts.hidden = false;
+}
+
+function renderCryptoScannerRejected(rejected) {
+  const details = document.getElementById(
+    "crypto-scanner-rejected-details",
+  );
+  const body = cryptoScannerClearTable(
+    "crypto-scanner-rejected-body",
+  );
+
+  if (!body || !details) {
+    return;
+  }
+
+  if (rejected.length === 0) {
+    details.hidden = true;
+
+    return;
+  }
+
+  details.hidden = false;
+
+  rejected.forEach((item) => {
+    const row = document.createElement("tr");
+
+    cryptoScannerCell(row, cryptoScannerRoute(item));
+    cryptoScannerCell(
+      row,
+      CRYPTO_SCANNER_STAGE_LABEL[item.stage] ||
+        item.stage ||
+        "—",
+    );
+    cryptoScannerCell(row, item.reason || "—");
+
+    body.appendChild(row);
+  });
+}
+
+// last_venue_errors é o que distingue "nenhuma rota fecha"
+// de "a venue está fora do ar". São diagnósticos diferentes
+// e pedem ações diferentes.
+function cryptoScannerVenueAlerts(status) {
+  const errors = status.last_venue_errors || {};
+
+  return Object.keys(errors).map(
+    (venue) =>
+      `⚠ ${venue} não respondeu: ${errors[venue]}`,
+  );
+}
+
+function renderCryptoScannerStatus(status) {
+  cryptoScannerText(
+    "crypto-scanner-cycles",
+    status.cycles ?? 0,
+  );
+  cryptoScannerText(
+    "crypto-scanner-failures",
+    status.failures ?? 0,
+  );
+  cryptoScannerText(
+    "crypto-scanner-venues",
+    status.last_venues_collected ?? 0,
+  );
+  cryptoScannerText(
+    "crypto-scanner-last-status",
+    status.last_status || "—",
+  );
+}
+
+function renderCryptoScannerDisabled(payload) {
+  cryptoScannerText("crypto-scanner-pair", "—");
+  cryptoScannerText("crypto-scanner-opportunities", 0);
+  cryptoScannerText("crypto-scanner-rejected", 0);
+  renderCryptoScannerRejected([]);
+  renderCryptoScannerAlerts([]);
+
+  const body = cryptoScannerClearTable(
+    "crypto-scanner-body",
+  );
+
+  if (body) {
+    cryptoScannerEmptyRow(
+      body,
+      10,
+      "Scanner desligado.",
+    );
+  }
+
+  cryptoScannerText(
+    "crypto-scanner-status",
+    payload.detail ||
+      "CRYPTO_SCANNER_ENABLED está desligado. " +
+        "Nenhum ciclo é executado.",
+  );
+}
+
+function renderCryptoScanner(payload, status) {
+  renderCryptoScannerStatus(status);
+
+  const pair = payload.pair || {};
+
+  cryptoScannerText(
+    "crypto-scanner-pair",
+    pair.canonical ||
+      (pair.base_asset && pair.quote_asset
+        ? `${pair.base_asset}/${pair.quote_asset}`
+        : "—"),
+  );
+
+  const opportunities = payload.opportunities || [];
+  const rejected = payload.rejected || [];
+
+  cryptoScannerText(
+    "crypto-scanner-opportunities",
+    opportunities.length,
+  );
+  cryptoScannerText(
+    "crypto-scanner-rejected",
+    rejected.length,
+  );
+
+  const body = cryptoScannerClearTable(
+    "crypto-scanner-body",
+  );
+
+  if (!body) {
+    return;
+  }
+
+  if (opportunities.length === 0) {
+    cryptoScannerEmptyRow(
+      body,
+      10,
+      "Nenhuma rota líquida no último ciclo.",
+    );
+  }
+
+  opportunities.forEach((item) => {
+    const breakdown = item.breakdown || {};
+    const row = document.createElement("tr");
+
+    if (item.is_profitable_on_paper === true) {
+      row.classList.add(
+        "real-radar-row-profitable",
+      );
+    }
+
+    cryptoScannerCell(row, cryptoScannerRoute(item));
+    cryptoScannerCell(
+      row,
+      cryptoScannerNumber(
+        item.executable_quantity,
+        6,
+      ),
+    );
+    cryptoScannerCell(
+      row,
+      cryptoScannerNumber(item.buy_vwap),
+    );
+    cryptoScannerCell(
+      row,
+      cryptoScannerNumber(item.sell_vwap),
+    );
+    cryptoScannerCell(
+      row,
+      cryptoScannerNumber(item.gross_profit, 4),
+    );
+    cryptoScannerCell(
+      row,
+      cryptoScannerNumber(item.total_fees, 4),
+    );
+    cryptoScannerCell(
+      row,
+      cryptoScannerNumber(
+        breakdown.total_reserves,
+        4,
+      ),
+    );
+    cryptoScannerCell(
+      row,
+      cryptoScannerNumber(
+        item.expected_net_profit,
+        4,
+      ),
+    );
+    cryptoScannerCell(
+      row,
+      cryptoScannerPercent(breakdown.expected_roi),
+    );
+    cryptoScannerCell(
+      row,
+      item.risk_status || "—",
+    );
+
+    body.appendChild(row);
+  });
+
+  renderCryptoScannerRejected(rejected);
+  renderCryptoScannerAlerts(
+    cryptoScannerVenueAlerts(status),
+  );
+
+  let summary;
+
+  if (opportunities.length > 0) {
+    summary =
+      `${opportunities.length} rota(s) com lucro ` +
+      "líquido positivo após taxas e reservas.";
+  } else {
+    summary =
+      "Nenhuma ineficiência líquida neste ciclo. " +
+      `${rejected.length} rota(s) descartada(s).`;
+  }
+
+  if (payload.status === "WARMING_UP") {
+    summary =
+      payload.detail ||
+      "Aguardando o primeiro ciclo do coletor.";
+  }
+
+  cryptoScannerText("crypto-scanner-status", summary);
+}
+
+async function cryptoScannerFetch(path) {
+  const response = await fetch(path, {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  // 401/403 aqui significam sessão ausente ou sem MFA, não
+  // falha do scanner. Distinguir evita repetir na Fase 20D o
+  // defeito de mensagem única já registrado no login.
+  if (
+    response.status === 401 ||
+    response.status === 403
+  ) {
+    const error = new Error(
+      "Sessão expirada ou sem MFA. " +
+        "Entre novamente para ver o scanner cripto.",
+    );
+
+    error.isAuthError = true;
+
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Scanner respondeu HTTP ${response.status}`,
+    );
+  }
+
+  return response.json();
+}
+
+async function refreshCryptoScanner() {
+  if (cryptoScannerState.loading) {
+    return;
+  }
+
+  const button = document.getElementById(
+    "crypto-scanner-refresh",
+  );
+
+  cryptoScannerState.loading = true;
+
+  if (button) {
+    button.disabled = true;
+  }
+
+  cryptoScannerText(
+    "crypto-scanner-status",
+    "Atualizando scanner cripto...",
+  );
+
+  try {
+    const payload = await cryptoScannerFetch(
+      "/crypto/scanner/snapshot",
+    );
+
+    if (payload.status === "DISABLED") {
+      renderCryptoScannerDisabled(payload);
+      renderCryptoScannerStatus({
+        last_status: "DISABLED",
+      });
+
+      return;
+    }
+
+    // O status é complementar: se falhar, o snapshot ainda
+    // vale e o painel não deve ficar em branco por causa dele.
+    let status = {};
+
+    try {
+      status = await cryptoScannerFetch(
+        "/crypto/scanner/status",
+      );
+    } catch (statusError) {
+      status = {
+        last_status: "STATUS_INDISPONÍVEL",
+      };
+    }
+
+    renderCryptoScanner(payload, status);
+  } catch (error) {
+    renderCryptoScannerAlerts([]);
+
+    cryptoScannerText(
+      "crypto-scanner-status",
+      error?.isAuthError
+        ? String(error.message)
+        : "Não foi possível atualizar o scanner: " +
+            String(error?.message || error),
+    );
+  } finally {
+    cryptoScannerState.loading = false;
+
+    if (button) {
+      button.disabled = false;
+    }
+  }
+}
+
+function initializeCryptoScanner() {
+  const button = document.getElementById(
+    "crypto-scanner-refresh",
+  );
+
+  if (!button) {
+    return;
+  }
+
+  button.addEventListener(
+    "click",
+    refreshCryptoScanner,
+  );
+
+  refreshCryptoScanner();
+
+  cryptoScannerState.timer = window.setInterval(
+    refreshCryptoScanner,
+    60000,
+  );
+}
+
+initializeCryptoScanner();

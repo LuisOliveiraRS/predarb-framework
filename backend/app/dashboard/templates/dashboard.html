@@ -24,6 +24,7 @@
             <a class="nav-link" href="#markets-panel">Mercados</a>
             <a class="nav-link" href="#opportunities-panel">Oportunidades</a>
         <a class="nav-link" href="#real-radar-panel">Radar Real</a>
+        <a class="nav-link" href="#crypto-scanner-panel">Scanner Cripto</a>
             <a class="nav-link" href="#orders-panel">Ordens</a>
             <a class="nav-link" href="#positions-panel">Posições</a>
             <a class="nav-link" href="#paper-panel">Conta Paper</a>
@@ -329,6 +330,147 @@
       <tbody id="real-radar-body"></tbody>
     </table>
   </div>
+</section>
+
+<section
+  id="crypto-scanner-panel"
+  class="panel table-panel"
+  aria-labelledby="crypto-scanner-title"
+>
+  <header class="panel-header">
+    <div>
+      <p class="eyebrow">
+        Books p&uacute;blicos CEX &middot; Paper &middot;
+        somente leitura
+      </p>
+      <h2 id="crypto-scanner-title">
+        Scanner de Arbitragem Cripto
+      </h2>
+    </div>
+
+    <button
+      id="crypto-scanner-refresh"
+      type="button"
+    >
+      Atualizar scanner
+    </button>
+  </header>
+
+  <dl class="summary-list">
+    <div>
+      <dt>Par</dt>
+      <dd id="crypto-scanner-pair">&mdash;</dd>
+    </div>
+
+    <div>
+      <dt>Rotas lucrativas</dt>
+      <dd id="crypto-scanner-opportunities">0</dd>
+    </div>
+
+    <div>
+      <dt>Rotas rejeitadas</dt>
+      <dd id="crypto-scanner-rejected">0</dd>
+    </div>
+  </dl>
+
+  <div
+    class="real-radar-monitoring-grid"
+    aria-label="Estado do coletor cripto"
+  >
+    <article class="real-radar-monitoring-card">
+      <span>Ciclos</span>
+      <strong id="crypto-scanner-cycles">0</strong>
+    </article>
+
+    <article class="real-radar-monitoring-card">
+      <span>Falhas</span>
+      <strong id="crypto-scanner-failures">0</strong>
+    </article>
+
+    <article class="real-radar-monitoring-card">
+      <span>Venues coletadas</span>
+      <strong id="crypto-scanner-venues">0</strong>
+    </article>
+
+    <article class="real-radar-monitoring-card">
+      <span>&Uacute;ltimo estado</span>
+      <strong id="crypto-scanner-last-status">
+        &mdash;
+      </strong>
+    </article>
+  </div>
+
+  <div
+    id="crypto-scanner-alerts"
+    class="crypto-scanner-alerts"
+    role="alert"
+    hidden
+  ></div>
+
+  <p
+    id="crypto-scanner-status"
+    role="status"
+    aria-live="polite"
+  >
+    Carregando scanner cripto...
+  </p>
+
+  <div class="table-scroll">
+    <table
+      class="opportunities-table real-radar-table"
+    >
+      <thead>
+        <tr>
+          <th>Rota</th>
+          <th>Qtd.</th>
+          <th>VWAP compra</th>
+          <th>VWAP venda</th>
+          <th>Bruto</th>
+          <th>Taxas</th>
+          <th>Reservas</th>
+          <th>L&iacute;quido</th>
+          <th>ROI</th>
+          <th>Risco</th>
+        </tr>
+      </thead>
+
+      <tbody id="crypto-scanner-body"></tbody>
+    </table>
+  </div>
+
+  <details
+    id="crypto-scanner-rejected-details"
+    class="crypto-scanner-rejected"
+    hidden
+  >
+    <summary>
+      Rotas descartadas e o motivo
+    </summary>
+
+    <div class="table-scroll">
+      <table
+        class="opportunities-table real-radar-table"
+      >
+        <thead>
+          <tr>
+            <th>Rota</th>
+            <th>Est&aacute;gio</th>
+            <th>Motivo</th>
+          </tr>
+        </thead>
+
+        <tbody
+          id="crypto-scanner-rejected-body"
+        ></tbody>
+      </table>
+    </div>
+  </details>
+
+  <p class="crypto-scanner-disclaimer">
+    Diferen&ccedil;as observadas n&atilde;o s&atilde;o promessa de
+    lucro. Nenhuma ordem &eacute; enviada: o scanner opera em
+    modo Paper, somente leitura.
+  </p>
 </section>
 
 <section id="markets-panel" class="panel table-panel">
