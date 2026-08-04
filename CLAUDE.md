@@ -2,9 +2,9 @@
 
 > Coloque este arquivo na raiz de `C:\predarb-framework` para servir como contexto principal do Claude Code no VSCode.
 >
-> Data do contexto: 02/08/2026.
+> Data do contexto: 03/08/2026.
 >
-> Estado: a Fase 17 está implantada e validada em produção. As Fases 18, 19A, 19B, 19C1 e 19C2 estão implementadas e aprovadas localmente, sem deploy. As Fases 20A, 20B e 20C tambem estao prontas. O coletor cripto tem job de scheduler e API, ambos desligados por default; falta apenas o painel no dashboard, no 20D.
+> Estado: as Fases 17 a 20C estão implantadas em produção. As Fases 18 a 20C chegaram lá em **03/08/2026**, no push que sincronizou `main` com `origin/main`; até então estavam apenas locais. O coletor cripto tem job de scheduler e API, **ambos desligados por default e desligados em produção**. A Fase 20D — o painel do scanner no dashboard — está implementada e commitada na branch `feature/phase-20d-crypto-dashboard`, sem merge e sem deploy.
 >
 > A pendência de segurança da seção 4 foi **fechada em 02/08/2026**: a autenticação passou a ser exigida em produção. Ver seção 4 para o estado atual e para os defeitos conhecidos da experiência de login.
 
@@ -88,10 +88,12 @@ Python:   C:\predarb-framework\backend\.venv\Scripts\python.exe
 ### Branch atual
 
 ```text
-feature/phase-20c-crypto-api
+feature/phase-20d-crypto-dashboard
 ```
 
-As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado duas vezes.
+As branches anteriores já foram merjadas na `main`. Confira sempre com `git status --short --branch` antes de confiar neste campo: ele já ficou defasado três vezes.
+
+**`main` e `origin/main` estão sincronizados desde 03/08/2026.** Antes disso `main` acumulava dois commits locais da Fase 20C, e o repositório remoto ficava atrás do que a seção 5 descrevia como pronto.
 
 ### Base conhecida
 
@@ -122,13 +124,14 @@ O arquivo `CLAUDE_CODE_PROMPT_INICIAL.txt` permanece fora do versionamento: dupl
 ### Última validação completa
 
 ```text
-981 passed, 10 deselected, 2 warnings in 73.40s
+996 passed, 10 deselected, 2 warnings in 148.23s
 git diff --check: aprovado
+node --check dashboard.js: sintaxe aprovada
 auditoria de flags financeiras: nenhuma ocorrência True em app/
 varredura de segredos no diff: nenhum indício
 ```
 
-Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2, 939 com a 20A, 965 com a 20B, 981 com a 20C. Mais 10 de integracao, fora da suite padrao.
+Evolução: 688 antes da Fase 18, 752 depois dela, 799 com a 19A, 840 com a 19B, 880 com a 19C1, 912 com a 19C2, 939 com a 20A, 965 com a 20B, 981 com a 20C, 996 com a 20D. Mais 10 de integracao, fora da suite padrao.
 
 Se a suíte completa abortar com `MemoryError` durante a coleta, o problema é a máquina, não o código. Rodar em lotes contorna:
 
@@ -171,6 +174,33 @@ https://predarb-framework.onrender.com/dashboard
 ```
 
 Hospedagem: Render Free.
+
+#### Auto-deploy: `push` em `main` é deploy
+
+O serviço está com **Auto-Deploy ligado, on commit, no branch `main`**. Confirmado em 03/08/2026.
+
+Consequência que não se enxerga pelo repositório: **não existe `render.yaml` versionado**, a configuração vive só no painel do Render, e portanto nada no código revela esse acoplamento. `git push origin main` **é** um deploy de produção. A regra 4 da seção 1 trata `push` e `deploy` como autorizações separadas — com essa configuração, autorizar um autoriza o outro, e isso precisa ser dito na hora de pedir autorização.
+
+Para salvar commits sem deployar, empurre para uma branch de feature.
+
+#### Deploy das Fases 18 a 20C — 03/08/2026
+
+O push que sincronizou `main` levou todo o domínio cripto a produção. Validação logo após:
+
+```text
+GET /health                  200  {"status":"healthy","version":"0.1.0"}
+GET /auth/config             200  enabled=true  dashboard_required=true
+GET /crypto/scanner/status   404 antes -> 401 depois
+GET /rota-inexistente        404  (controle)
+coletor da Fase 17           29 cycles / 29 successes / 0 failures / READY
+flags financeiras            todas false
+```
+
+O par **`404` na rota inexistente e `401` no endpoint cripto** é a evidência que importa: prova que a rota existe **e** que a autenticação do roteador não virou no-op — exatamente a falha da Fase 14/17 que a 20C se propôs a evitar. Um `401` isolado não provaria nada sem o controle ao lado.
+
+O coletor da Fase 17 atravessou o deploy sem falha. O scanner cripto permanece desligado: `CRYPTO_SCANNER_ENABLED` não está definido no ambiente, e o default é `false`.
+
+Armadilha de diagnóstico: contadores como `cycles` são de memória e zeram no restart, então servem para estimar o uptime do processo — mas o `WebFetch` **cacheia por URL durante 15 minutos**, e reconsultar a mesma URL devolve a resposta antiga. Varie a query string ao comparar antes e depois de um deploy.
 
 Consequências:
 
@@ -983,7 +1013,7 @@ O job só é registrado quando `SCHEDULER_ENABLED` e `CRYPTO_SCANNER_ENABLED` s�
 
 #### O que falta
 
-O **20C** (API) foi entregue logo em seguida; falta o **20D**, o painel no dashboard.
+Nada: o **20C** (API) e o **20D** (painel) foram entregues em seguida.
 
 ### 20C — API do scanner cripto
 
@@ -1010,6 +1040,43 @@ Valem registro porque vão reaparecer.
 **O `.env` local liga a autenticação.** `AUTH_ENABLED` e `AUTH_REQUIRED_FOR_DASHBOARD` estão verdadeiros no `.env` de desenvolvimento, então testes que esperam 200 falham se não desligarem a exigência explicitamente. Teste que depende de configuração de ambiente passa ou falha conforme a máquina. Cada teste deve declarar o que precisa, e os fixtures `client` e `enforcing_client` fazem isso.
 
 **`app.routes` não achata mais rotas incluídas.** O FastAPI 0.139 embrulha roteadores num `_IncludedRouter`, então varrer `app.routes` procurando caminho não encontra nada — mesmo com a rota funcionando. Para verificar registro, inspecione `router.routes` ou faça uma requisição e confira que não é 404.
+
+### 20D — painel do scanner cripto no dashboard
+
+Implementada em 03/08/2026, na branch `feature/phase-20d-crypto-dashboard`. Fecha a Fase 20. 981 testes antes, 996 depois.
+
+```text
+dashboard/templates/dashboard.html          +142  painel e navegação
+dashboard/static/js/dashboard.js            +468  render, fetch, estados
+dashboard/static/css/dashboard.css           +55  alertas, rejeições
+tests/test_phase20d_crypto_dashboard.py      +15 testes
+```
+
+O painel consome `/crypto/scanner/snapshot` e `/crypto/scanner/status`, e exibe métricas do coletor, tabela de rotas com a decomposição de custos do `ProfitBreakdown`, rotas rejeitadas com motivo e estágio, e erros por venue.
+
+#### Decisões que valem conhecer
+
+**O painel nunca dispara coleta.** Só lê os dois endpoints de memória, e há teste travando isso — `force_refresh`, `POST` e qualquer rota de scan são proibidos no bloco cripto do script. É a lição da Fase 17 aplicada ao front: coleta por acesso liga a carga upstream ao tráfego do dashboard, e não ao intervalo configurado.
+
+**`401` e `403` têm mensagem própria, separada de falha do scanner.** Os endpoints cripto exigem `require_dashboard_user`, ao contrário de `/real-markets/radar/snapshot`, que é público. Uma sessão sem MFA recebe "sessão expirada ou sem MFA", não "não foi possível atualizar". Colapsar as duas causas reproduziria no painel o defeito de mensagem única já registrado para o login na seção 4 — o mesmo erro, na mesma base de código, duas vezes.
+
+**Alertas de venue não reutilizam `.real-radar-alerts`.** Aquela classe é verde porque sinaliza oportunidade encontrada. Usá-la para "a OKX não respondeu" pintaria um erro de verde e comunicaria o oposto do que aconteceu. Daí `.crypto-scanner-alerts`, em âmbar. A reutilização de CSS é barata; a inversão de significado, não.
+
+**Scanner desligado renderiza como configuração, não como erro.** `status: "DISABLED"` mostra "Scanner desligado" e o `detail` do backend. É o estado atual em produção, então é o primeiro que qualquer pessoa vê — um painel que parece quebrado nesse estado geraria investigação inútil.
+
+**A falha do `/status` não apaga o painel.** O snapshot é a informação principal; o status é complementar. Se o segundo falhar, o painel mostra `STATUS_INDISPONÍVEL` nos contadores e preserva a tabela de rotas.
+
+#### Regressão de encoding corrigida junto
+
+`DASHBOARD_VIEWS` continha literalmente `"Vis?o Geral"` e `"Posi??es"` — mojibake antigo, anterior a esta fase. Como `dashboard.js:727` usa esse valor como título visível da página, o defeito estava na tela. Corrigido, com teste de regressão; nenhum teste dependia das strings quebradas.
+
+Cuidado para o futuro: `dashboard.js` **é UTF-8 válido e sem BOM**, e acentos diretos funcionam — boa parte do arquivo já os usa. Os escapes `ç` do bloco do Radar são hábito, não exigência. Antes de assumir que o arquivo não aceita acento, verifique com `[System.IO.File]::ReadAllText` e um `UTF8Encoding` estrito.
+
+#### Como validar sem executar JavaScript
+
+A suíte não roda JS, então o contrato do front é verificado sobre o próprio fonte, como nas fases 12B, 14, 15 e 17. É rasteiro de propósito: pega remoção acidental de `id`, troca de endpoint e regressão de encoding, que são os defeitos que de fato ocorreram aqui. Para sintaxe, `node --check` cobre o que os testes não cobrem.
+
+As asserções negativas são escopadas ao bloco cripto (`JS.split("const cryptoScannerState")[-1]`) para que um `POST` legítimo em outro painel não quebre esta fase.
 
 ---
 
@@ -1902,14 +1969,16 @@ Contratos de transporte, backoff com jitter, rate limit, métricas e o `BookStre
 
 Aceitação da fase completa: três books normalizados, stale bloqueado e testes por fixtures. Os três critérios já estão satisfeitos; o 19C2 acrescenta o transporte real.
 
-### Fase 20 — scanner CEX-CEX Paper
+### Fase 20 — scanner CEX-CEX Paper — CONCLUÍDA
 
-- VWAP;
-- taxas;
-- slippage/buffer;
-- ranking;
-- dashboard;
-- nenhuma ordem real.
+Dividida em quatro incrementos, todos implementados. Detalhes na seção 5.
+
+- **20A** motor de lucratividade e scanner espacial — VWAP, taxas, slippage/buffer, ranking;
+- **20B** coletor com job de scheduler, por REST e não WebSocket;
+- **20C** API autenticada;
+- **20D** painel no dashboard.
+
+Nenhuma ordem real. As Fases 20A a 20C estão em produção desde 03/08/2026, com o coletor desligado; a 20D segue em branch, sem merge.
 
 ### Fase 21 — replay/backtesting
 
@@ -2245,11 +2314,15 @@ https://docs.stargate.finance/
 Leia integralmente o arquivo CLAUDE.md na raiz do projeto antes de agir.
 
 Estamos em C:\predarb-framework, branch
-docs/phase-17-production-validation.
+feature/phase-20d-crypto-dashboard.
 
-A Fase 17 está concluída: merjada, tagueada, implantada e validada em
-produção, com 688 testes aprovados. A próxima fase é a 18. Não faça commit,
-push, merge, tag, deploy, stash, reset ou descarte sem minha autorização.
+A Fase 20 está concluída em todos os quatro incrementos, com 996 testes
+aprovados. As Fases 17 a 20C estão em produção; a 20D está commitada na
+branch, sem merge e sem deploy.
+
+ATENÇÃO: o Render está com auto-deploy on commit no branch main. Um push
+para main é um deploy de produção. Não faça commit, push, merge, tag,
+deploy, stash, reset ou descarte sem minha autorização.
 
 Primeiro:
 1. execute git status --short --branch e git log --oneline -6;
@@ -2259,15 +2332,14 @@ Primeiro:
 
 Não altere arquivos ainda.
 
-Depois seguiremos para a Fase 18, o novo bounded context de arbitragem de
-criptomoedas CEX/DEX/Web3, começando somente por dados públicos e
-simulação. Nenhuma execução real deverá ser habilitada sem autorização
-explícita e sem cumprir o checklist definido no CLAUDE.md.
+Depois decidiremos entre merjar a 20D, ligar o scanner cripto em produção
+com CRYPTO_SCANNER_ENABLED, ou seguir para a Fase 21 (replay/backtesting).
+Nenhuma execução real deverá ser habilitada sem autorização explícita e sem
+cumprir o checklist definido no CLAUDE.md.
 
-A pendência de segurança da seção 4 foi fechada em 02/08/2026: a
-autenticação passou a ser exigida em produção. Seguem em aberto, sem fase
-atribuída, os dois defeitos de experiência de login registrados na seção 4
-e a exposição pública de /docs e /openapi.json.
+Seguem em aberto, sem fase atribuída: os dois defeitos de experiência de
+login registrados na seção 4, a exposição pública de /docs e /openapi.json,
+e a decisão sobre trocar MONOTONIC por STRICT_INCREMENT na Bybit.
 ```
 
 ---

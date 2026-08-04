@@ -1065,3 +1065,58 @@ tbody tr:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/*
+ * Scanner cripto. Os alertas aqui sinalizam venue fora do ar,
+ * e nao oportunidade encontrada: por isso tom de aviso, e nao
+ * o verde de .real-radar-alerts.
+ */
+.crypto-scanner-alerts {
+    margin: 14px 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(251, 191, 36, 0.32);
+    border-radius: 12px;
+    background: rgba(251, 191, 36, 0.09);
+    color: var(--yellow);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.crypto-scanner-alerts[hidden] {
+    display: none;
+}
+
+.crypto-scanner-alerts p {
+    margin: 0;
+}
+
+.crypto-scanner-alerts p + p {
+    margin-top: 6px;
+}
+
+.crypto-scanner-rejected {
+    margin-top: 16px;
+}
+
+.crypto-scanner-rejected[hidden] {
+    display: none;
+}
+
+.crypto-scanner-rejected summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.crypto-scanner-rejected .real-radar-table {
+    min-width: 620px;
+}
+
+.crypto-scanner-disclaimer {
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.6;
+}
